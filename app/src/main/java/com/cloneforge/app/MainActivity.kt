@@ -169,7 +169,7 @@ private fun CloneForgeApp(
                     }
                     Spacer(Modifier.height(8.dp))
                     val filteredLibrary = library.filter { record ->
-                        val installed = isPackageInstalled(context, record.clonePackage)
+                        val installed = record.clonePackage in installedPackages
                         val matchesFilter = when (libraryFilter) {
                             "Installed" -> installed
                             "APK Ready" -> !installed
@@ -236,9 +236,9 @@ private fun CloneForgeApp(
                                         )
                                         Spacer(Modifier.height(4.dp))
                                         Text(
-                                            if (isPackageInstalled(context, record.clonePackage)) "Installed" else "APK ready",
+                                            if (record.clonePackage in installedPackages) "Installed" else "APK ready",
                                             style = MaterialTheme.typography.labelMedium,
-                                            color = if (isPackageInstalled(context, record.clonePackage)) {
+                                            color = if (record.clonePackage in installedPackages) {
                                                 MaterialTheme.colorScheme.primary
                                             } else {
                                                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -247,7 +247,7 @@ private fun CloneForgeApp(
                                     }
                                     TextButton(onClick = { openCloneInstaller(context, file) }) {
                                         Text(
-                                            if (isPackageInstalled(context, record.clonePackage)) "Update" else "Install"
+                                            if (record.clonePackage in installedPackages) "Update" else "Install"
                                         )
                                     }
                                     TextButton(onClick = {
