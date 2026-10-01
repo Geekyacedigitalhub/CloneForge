@@ -26,7 +26,7 @@ class CloneService(private val context: Context) {
         val applicationInfo = context.packageManager.getApplicationInfo(sourcePackage, 0)
         val source = engine.inspect(applicationInfo)
             ?: error("Unable to inspect the selected installed app.")
-        val preflightResult = preflight.inspect(source.sourceApk).getOrThrow()
+        val preflightResult = preflight.inspect(source.sourceApk, source.packageName).getOrThrow()
         require(preflightResult.compatibility.supported) {
             preflightResult.compatibility.issues.joinToString(" ")
         }
