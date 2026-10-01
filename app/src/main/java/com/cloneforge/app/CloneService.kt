@@ -3,17 +3,25 @@ package com.cloneforge.app
 import android.content.Context
 import java.io.File
 
+data class CloneArtifact(
+    val apkFile: File,
+    val sourcePackage: String,
+    val clonePackage: String,
+    val cloneName: String
+)
+
 class CloneService(private val context: Context) {
 
     private val engine = CloneEngine(context)
     private val pipeline = ApkClonePipeline()
+    private val signer = ApkSignerService(context)
 
     fun buildInstalledAppClone(
         sourcePackage: String,
         cloneName: String,
         cloneIndex: Int,
         packageSuffix: String? = null
-    ): Result<UnsignedCloneArtifact> = runCatching {
+    ): Result<CloneArtifact> = runCatching {
         val applicationInfo = context.packageManager.getApplicationInfo(sourcePackage, 0)
         val source = engine.inspect(applicationInfo)
             ?: error("Unable to inspect the selected installed app.")
@@ -26,7 +34,7 @@ class CloneService(private val context: Context) {
             ClonePlanner.createWithSuffix(source.packageName, cloneName, packageSuffix, cloneIndex)
         }
 
-        pipeline.buildUnsignedClone(
+        val unsigned = pipeline.buildUnsignedClone(
             sourceApk = File(workspace, "source.apk"),
             workspaceRoot = File(
                 context.filesDir,
@@ -34,6 +42,20 @@ class CloneService(private val context: Context) {
             ),
             plan = plan
         ).getOrThrow()
+
+        val signedOutput = File(
+            unsigned.apkFile.parentFile,
+            sanitize(plan.cloneName) + ".apk"
+        )
+
+        signer.sign(unsigned.apkFile, signedOutput).getOrThrow()
+
+        CloneArtifact(
+            apkFile = signedOutput,
+            sourcePackage = plan.sourcePackage,
+            clonePackage = plan.clonePackage,
+            cloneName = plan.cloneName
+        )
     }
 
     private fun sanitize(value: String): String =
