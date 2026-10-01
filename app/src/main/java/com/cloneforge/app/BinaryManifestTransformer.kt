@@ -87,7 +87,8 @@ private class BinaryXmlEditor(private val original: ByteArray) {
             }
 
             putU32(result, adjusted, newIndex.toLong())
-            putU32(result, adjusted + 4, 0x03000000L or newIndex.toLong())
+            result[adjusted + 7] = 0x03
+            putU32(result, adjusted + 8, newIndex.toLong())
         }
 
         return ManifestRewriteResult(
