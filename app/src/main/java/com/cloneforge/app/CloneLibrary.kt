@@ -239,7 +239,7 @@ class CloneLibrary(private val context: Context) {
             return CloneIntegrityReport(
                 checked = 1,
                 healthy = 0,
-                issues = listOf(CloneIntegrityIssue(record.clonePackage, record.cloneName, message),),
+                issues = listOf(CloneIntegrityIssue(record.clonePackage, record.cloneName, message)),
                 signaturesChecked = 1,
                 signaturesVerified = 0
             )
