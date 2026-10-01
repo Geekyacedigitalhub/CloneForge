@@ -17,7 +17,8 @@ data class UnsignedCloneArtifact(
 class ApkClonePipeline(
     private val workspaceManager: ApkWorkspaceManager = ApkWorkspaceManager(),
     private val manifestTransformer: BinaryManifestTransformer = BinaryManifestTransformer(),
-    private val plainTextRewriter: ApkPlainTextReferenceRewriter = ApkPlainTextReferenceRewriter()
+    private val plainTextRewriter: ApkPlainTextReferenceRewriter = ApkPlainTextReferenceRewriter(),
+    private val dexPackageRewriter: DexPackageRewriter = DexPackageRewriter()
 ) {
 
     fun buildUnsignedClone(
@@ -54,6 +55,8 @@ class ApkClonePipeline(
             clonePackage = plan.clonePackage
         )
 
+        rewriteDexFiles(workspace.unpackedDir, plan)
+
         val output = workspaceManager.outputApk(
             workspace,
             plan.cloneName + "-unsigned.apk"
@@ -67,6 +70,14 @@ class ApkClonePipeline(
             cloneName = plan.cloneName,
             manifestChanged = rewrite.packageChanged || rewrite.labelChanged || textRewrite.replacements > 0
         )
+    }
+
+    private fun rewriteDexFiles(unpackedDir: File, plan: ClonePlan) {
+        unpackedDir.walkTopDown()
+            .filter { it.isFile && it.name.matches(Regex("classes([2-9][0-9]*)?\\\\.dex")) }
+            .forEach { dex ->
+                dexPackageRewriter.rewrite(dex, plan.sourcePackage, plan.clonePackage).getOrThrow()
+            }
     }
 
     private fun packUnsignedApk(sourceDir: File, outputApk: File) {
