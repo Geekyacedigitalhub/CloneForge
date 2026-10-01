@@ -481,7 +481,12 @@ private fun CloneForgeApp(
                                         Text("Source: " + record.sourcePackage, style = MaterialTheme.typography.bodySmall)
                                         Text("APK: " + file.name, style = MaterialTheme.typography.bodySmall)
                                         Text("Size: " + formatFileSize(file.length()), style = MaterialTheme.typography.bodySmall)
-                                        Text(if (!file.exists()) "Integrity: APK missing" else "Integrity: Stored")
+                                        Text(
+    if (!file.exists()) "Integrity: APK missing"
+    else if (record.sha256.isBlank()) "Integrity: Not checked"
+    else if (sha256(file).equals(record.sha256, ignoreCase = true)) "Integrity: Verified"
+    else "Integrity: Checksum mismatch"
+)
                                         if (record.sha256.isNotBlank()) {
                                             Text("SHA-256: " + record.sha256.take(16) + "…", style = MaterialTheme.typography.bodySmall)
                                         }
