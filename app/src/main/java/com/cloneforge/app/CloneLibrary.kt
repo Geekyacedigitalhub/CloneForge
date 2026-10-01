@@ -43,6 +43,31 @@ class CloneLibrary(private val context: Context) {
 
     private val metadataFile get() = File(context.filesDir, "clone-library.json")
     private val buildRoot get() = File(context.filesDir, "clone-builds")
+    private val integrityCache = mutableMapOf<String, Pair<Long, String>>()
+
+    fun integrityLabel(record: CloneRecord): String {
+        val file = File(record.apkPath)
+        if (!file.exists() || !file.isFile) return "Integrity: APK missing"
+        if (record.sha256.isBlank()) return "Integrity: Not checked"
+
+        val fingerprint = Pair(file.length(), file.lastModified())
+        val cached = integrityCache[record.apkPath]
+        if (cached?.first == fingerprint.first && cached.second.isNotBlank()) {
+            return cached.second
+        }
+
+        val label = if (sha256(file).equals(record.sha256, ignoreCase = true)) {
+            "Integrity: Verified"
+        } else {
+            "Integrity: Checksum mismatch"
+        }
+        integrityCache[record.apkPath] = fingerprint.first to label
+        return label
+    }
+
+    fun invalidateIntegrityCache() {
+        integrityCache.clear()
+    }
 
     fun list(): List<CloneRecord> = runCatching {
         if (!metadataFile.exists()) return emptyList()
