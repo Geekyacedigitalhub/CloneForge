@@ -1,0 +1,23 @@
+package com.cloneforge.app
+
+data class ClonePlan(
+    val sourcePackage: String,
+    val clonePackage: String,
+    val cloneName: String,
+    val cloneIndex: Int
+)
+
+object ClonePlanner {
+    fun create(sourcePackage: String, cloneName: String, cloneIndex: Int): ClonePlan {
+        require(cloneName.isNotBlank()) { "Clone name cannot be empty." }
+
+        val clonePackage = PackageIdentity.createClonePackage(sourcePackage, cloneIndex)
+
+        return ClonePlan(
+            sourcePackage = sourcePackage,
+            clonePackage = clonePackage,
+            cloneName = cloneName.trim(),
+            cloneIndex = cloneIndex
+        )
+    }
+}
