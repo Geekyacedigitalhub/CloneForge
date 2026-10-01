@@ -21,7 +21,7 @@ class CloneService(private val context: Context) {
     fun buildInstalledAppClone(
         sourcePackage: String,
         cloneName: String,
-        cloneIndex: Int,
+        cloneIndex: Int? = null,
         packageSuffix: String? = null
     ): Result<CloneArtifact> = runCatching {
         val applicationInfo = context.packageManager.getApplicationInfo(sourcePackage, 0)
@@ -35,10 +35,17 @@ class CloneService(private val context: Context) {
         val workspace = engine.prepareWorkspace(source)
         engine.copySourceApk(source, workspace)
 
+        val requestedIndex = cloneIndex ?: nextAvailableCloneIndex(source.packageName)
+
         val plan = if (packageSuffix.isNullOrBlank()) {
-            ClonePlanner.create(source.packageName, cloneName, cloneIndex)
+            ClonePlanner.create(source.packageName, cloneName, requestedIndex)
         } else {
-            ClonePlanner.createWithSuffix(source.packageName, cloneName, packageSuffix, cloneIndex)
+            ClonePlanner.createWithSuffix(
+                source.packageName,
+                cloneName,
+                packageSuffix,
+                requestedIndex
+            )
         }
 
         require(library.findByClonePackage(plan.clonePackage) == null) {
@@ -69,6 +76,17 @@ class CloneService(private val context: Context) {
             clonePackage = plan.clonePackage,
             cloneName = plan.cloneName
         )
+    }
+
+    private fun nextAvailableCloneIndex(sourcePackage: String): Int {
+        var index = 1
+        while (library.findByClonePackage(
+                PackageIdentity.createClonePackage(sourcePackage, index)
+            ) != null
+        ) {
+            index++
+        }
+        return index
     }
 
     private fun sanitize(value: String): String =
