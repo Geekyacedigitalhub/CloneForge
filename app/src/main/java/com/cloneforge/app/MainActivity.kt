@@ -503,7 +503,29 @@ private fun CloneForgeApp(
                                         Text("Source: " + record.sourcePackage, style = MaterialTheme.typography.bodySmall)
                                         Text("APK: " + file.name, style = MaterialTheme.typography.bodySmall)
                                         Text("Size: " + formatFileSize(file.length()), style = MaterialTheme.typography.bodySmall)
-                                        Text(integrityLabel, style = MaterialTheme.typography.bodySmall)
+                                        val integrityTone = when {
+                                            integrityLabel.endsWith("Verified") -> MaterialTheme.colorScheme.primaryContainer
+                                            integrityLabel.endsWith("Checking…") -> MaterialTheme.colorScheme.secondaryContainer
+                                            integrityLabel.endsWith("Not checked") -> MaterialTheme.colorScheme.surfaceVariant
+                                            else -> MaterialTheme.colorScheme.errorContainer
+                                        }
+                                        val integrityTextColor = when {
+                                            integrityLabel.endsWith("Verified") -> MaterialTheme.colorScheme.onPrimaryContainer
+                                            integrityLabel.endsWith("Checking…") -> MaterialTheme.colorScheme.onSecondaryContainer
+                                            integrityLabel.endsWith("Not checked") -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            else -> MaterialTheme.colorScheme.onErrorContainer
+                                        }
+                                        Surface(
+                                            shape = MaterialTheme.shapes.small,
+                                            color = integrityTone
+                                        ) {
+                                            Text(
+                                                integrityLabel.removePrefix("Integrity: "),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = integrityTextColor
+                                            )
+                                        }
                                         if (record.sha256.isNotBlank()) {
                                             Text("SHA-256: " + record.sha256.take(16) + "…", style = MaterialTheme.typography.bodySmall)
                                         }
