@@ -438,6 +438,38 @@ private fun CloneForgeApp(
                             )
                         }
                     }
+                    val integrityCounts = library
+                        .map { cloneLibrary.integrityLabel(it) }
+                        .groupingBy { it }
+                        .eachCount()
+                    val verifiedCount = integrityCounts["Integrity: Verified"] ?: 0
+                    val attentionCount = library.count { record ->
+                        val label = cloneLibrary.integrityLabel(record)
+                        label != "Integrity: Verified" && label != "Integrity: Checking…"
+                    }
+                    val checkingCount = integrityCounts["Integrity: Checking…"] ?: 0
+                    Spacer(Modifier.height(8.dp))
+                    Card(Modifier.fillMaxWidth()) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Verified", style = MaterialTheme.typography.labelMedium)
+                                Text(verifiedCount.toString(), style = MaterialTheme.typography.titleMedium)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text("Needs attention", style = MaterialTheme.typography.labelMedium)
+                                Text(attentionCount.toString(), style = MaterialTheme.typography.titleMedium)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text("Checking", style = MaterialTheme.typography.labelMedium)
+                                Text(checkingCount.toString(), style = MaterialTheme.typography.titleMedium)
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(8.dp))
                     val filteredLibrary = library.filter { record ->
                         val installed = record.clonePackage in installedPackages
