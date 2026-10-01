@@ -96,7 +96,7 @@ private fun CloneForgeApp(
             text = { Text("This deletes saved clone APKs and build workspaces. Installed clones are not uninstalled.") },
             confirmButton = {
                 TextButton(onClick = {
-                    library.forEach { cloneLibrary.delete(it) }
+                    cloneLibrary.deleteAll()
                     library = cloneLibrary.list()
                     showDeleteAllDialog = false
                 }) { Text("Delete all") }
