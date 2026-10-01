@@ -9,7 +9,7 @@ data class CloneCompatibility(
 )
 
 object CloneCompatibilityChecker {
-    fun check(inspection: ApkInspection, isSplitApk: Boolean = false): CloneCompatibility {
+    fun check(inspection: ApkInspection, isSplitApk: Boolean = false, packageReferenceCount: Int = 0): CloneCompatibility {
         val issues = mutableListOf<String>()
         val warnings = mutableListOf<String>()
 
