@@ -249,8 +249,19 @@ private fun CloneForgeApp(
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
                             items(filteredLibrary) { record ->
                             val file = java.io.File(record.apkPath)
+                            val sourceIcon = remember(record.sourcePackage) {
+                                loadApplicationIcon(context, record.sourcePackage)
+                            }
                             Card(Modifier.fillMaxWidth()) {
                                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    sourceIcon?.let { icon ->
+                                        Image(
+                                            bitmap = icon.asImageBitmap(),
+                                            contentDescription = record.cloneName,
+                                            modifier = Modifier.size(52.dp)
+                                        )
+                                        Spacer(Modifier.width(14.dp))
+                                    }
                                     Column(Modifier.weight(1f)) {
                                         Text(record.cloneName, style = MaterialTheme.typography.titleMedium)
                                         Text(record.clonePackage, style = MaterialTheme.typography.bodySmall)
@@ -605,6 +616,12 @@ Path: ${built.apkFile.absolutePath}"
     }
 }
 
+
+private fun loadApplicationIcon(context: android.content.Context, packageName: String): Bitmap? =
+    runCatching {
+        val info = context.packageManager.getApplicationInfo(packageName, 0)
+        drawableToBitmap(info.loadIcon(context.packageManager))
+    }.getOrNull()
 
 private fun drawableToBitmap(drawable: Drawable): Bitmap {
     val width = drawable.intrinsicWidth.coerceAtLeast(1)
