@@ -26,15 +26,26 @@ class ApkPlainTextReferenceRewriter(
     }
 
     private fun isSafePlainTextTarget(path: String): Boolean {
-        return path.startsWith("assets/", ignoreCase = true) ||
-            path.startsWith("res/raw/", ignoreCase = true) ||
-            path.endsWith(".txt", ignoreCase = true) ||
-            path.endsWith(".json", ignoreCase = true) ||
-            path.endsWith(".xml", ignoreCase = true) && !path.equals("AndroidManifest.xml", ignoreCase = true) ||
-            path.endsWith(".properties", ignoreCase = true) ||
-            path.endsWith(".ini", ignoreCase = true)
-    }
+        if (path.equals("AndroidManifest.xml", ignoreCase = true)) return false
 
+        val lower = path.lowercase()
+        val textualExtension = lower.endsWith(".txt") ||
+            lower.endsWith(".json") ||
+            lower.endsWith(".xml") ||
+            lower.endsWith(".properties") ||
+            lower.endsWith(".ini") ||
+            lower.endsWith(".yaml") ||
+            lower.endsWith(".yml") ||
+            lower.endsWith(".csv") ||
+            lower.endsWith(".html") ||
+            lower.endsWith(".js") ||
+            lower.endsWith(".ts")
+
+        // assets/ and res/raw/ can contain arbitrary binary payloads. Only
+        // rewrite files with an explicitly textual extension so we do not
+        // accidentally modify images, databases, fonts, audio, or opaque resources.
+        return textualExtension
+    }
     private fun isLikelyPlainText(file: File): Boolean {
         val bytes = file.inputStream().use { input ->
             val buffer = ByteArray(4096)
