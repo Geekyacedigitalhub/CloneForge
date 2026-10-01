@@ -22,8 +22,10 @@ class CloneService(private val context: Context) {
         sourcePackage: String,
         cloneName: String,
         cloneIndex: Int? = null,
-        packageSuffix: String? = null
+        packageSuffix: String? = null,
+        onProgress: ((String) -> Unit)? = null
     ): Result<CloneArtifact> = runCatching {
+        onProgress?.invoke("Validating clone settings…")
         require(cloneName.isNotBlank()) { "Clone name cannot be empty." }
 
         val requestedIndex = cloneIndex ?: nextAvailableCloneIndex(sourcePackage)
@@ -45,6 +47,7 @@ class CloneService(private val context: Context) {
             "The package ${plan.clonePackage} is already installed. Use a different package suffix."
         }
 
+        onProgress?.invoke("Inspecting source APK…")
         val applicationInfo = context.packageManager.getApplicationInfo(sourcePackage, 0)
         val source = engine.inspect(applicationInfo)
             ?: error("Unable to inspect the selected installed app.")
@@ -53,6 +56,7 @@ class CloneService(private val context: Context) {
             preflightResult.compatibility.issues.joinToString(" ")
         }
 
+        onProgress?.invoke("Preparing clone workspace…")
         val workspace = engine.prepareWorkspace(source)
         engine.copySourceApk(source, workspace)
 
@@ -62,6 +66,7 @@ class CloneService(private val context: Context) {
         )
 
         try {
+            onProgress?.invoke("Rebuilding APK package identity…")
             val unsigned = pipeline.buildUnsignedClone(
                 sourceApk = File(workspace, "source.apk"),
                 workspaceRoot = cloneWorkspaceRoot,
@@ -73,8 +78,10 @@ class CloneService(private val context: Context) {
                 sanitize(plan.cloneName) + "-" + sanitize(plan.clonePackage) + ".apk"
             )
 
+            onProgress?.invoke("Signing clone APK…")
             signer.sign(unsigned.apkFile, signedOutput).getOrThrow()
 
+            onProgress?.invoke("Saving clone to library…")
             library.add(
                 CloneRecord(
                     cloneName = plan.cloneName,
