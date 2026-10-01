@@ -38,6 +38,8 @@ private class BinaryXmlEditor(private val original: ByteArray) {
     private val stringIndexes = mutableMapOf<String, Int>()
     private var stringPoolChunk: Chunk? = null
     private val replacements = mutableMapOf<Int, Int>()
+    private var packageReplacement = false
+    private var labelReplacement = false
 
     data class Chunk(val offset: Int, val type: Int, val headerSize: Int, val size: Int)
 
@@ -49,6 +51,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
 
         findStartTagAttribute("manifest", "package")?.let {
             replacements[it] = targetIndex
+            packageReplacement = true
         } ?: error("Manifest package attribute was not found.")
     }
 
@@ -59,6 +62,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
             ?: return
 
         replacements[attr] = targetIndex
+        labelReplacement = true
     }
 
     fun build(): ManifestRewriteResult {
@@ -88,8 +92,8 @@ private class BinaryXmlEditor(private val original: ByteArray) {
 
         return ManifestRewriteResult(
             data = result,
-            packageChanged = replacements.isNotEmpty(),
-            labelChanged = replacements.size > 1
+            packageChanged = packageReplacement,
+            labelChanged = labelReplacement
         )
     }
 
