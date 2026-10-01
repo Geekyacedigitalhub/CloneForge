@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun CloneForgeApp(
     apps: List<InstalledApp>,
-    onLibraryReady: (@MainThread () -> Unit) -> Unit
+    onLibraryReady: (() -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     var selected by remember { mutableStateOf<InstalledApp?>(null) }
