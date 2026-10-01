@@ -47,6 +47,7 @@ class CloneLibrary(private val context: Context) {
     private val metadataFile get() = File(context.filesDir, "clone-library.json")
     private val buildRoot get() = File(context.filesDir, "clone-builds")
     private val integrityCache = ConcurrentHashMap<String, Triple<Long, Long, String>>()
+    private val integrityDetails = ConcurrentHashMap<String, String>()
 
     fun integrityLabel(record: CloneRecord): String {
         val file = File(record.apkPath)
@@ -82,8 +83,11 @@ class CloneLibrary(private val context: Context) {
         return label
     }
 
+    fun integrityDetail(record: CloneRecord): String? = integrityDetails[record.apkPath]
+
     fun invalidateIntegrityCache() {
         integrityCache.clear()
+        integrityDetails.clear()
     }
 
     fun list(): List<CloneRecord> = runCatching {
@@ -92,8 +96,10 @@ class CloneLibrary(private val context: Context) {
             .sortedByDescending { it.createdAt }
     }.getOrDefault(emptyList())
 
-    private fun cacheIntegrityLabel(record: CloneRecord, file: File, label: String) {
+    private fun cacheIntegrityLabel(record: CloneRecord, file: File, label: String, detail: String? = null) {
         integrityCache[record.apkPath] = Triple(file.length(), file.lastModified(), label)
+        if (detail.isNullOrBlank()) integrityDetails.remove(record.apkPath)
+        else integrityDetails[record.apkPath] = detail
     }
 
     fun checkIntegrity(): CloneIntegrityReport {
@@ -128,7 +134,7 @@ class CloneLibrary(private val context: Context) {
 
             val verification = ApkFileVerifier().verify(file)
             if (!verification.verified) {
-                cacheIntegrityLabel(record, file, "Integrity: Verification failed")
+                cacheIntegrityLabel(record, file, "Integrity: Verification failed", verification.error ?: "APK structure could not be verified.")
                 issues += CloneIntegrityIssue(
                     record.clonePackage,
                     record.cloneName,
@@ -140,7 +146,7 @@ class CloneLibrary(private val context: Context) {
             val signatureVerification = ApkSignatureVerifier().verify(file)
             signaturesChecked++
             if (!signatureVerification.verified) {
-                cacheIntegrityLabel(record, file, "Integrity: Verification failed")
+                cacheIntegrityLabel(record, file, "Integrity: Verification failed", signatureVerification.error ?: "APK cryptographic signature could not be verified.")
                 issues += CloneIntegrityIssue(
                     record.clonePackage,
                     record.cloneName,
@@ -151,7 +157,7 @@ class CloneLibrary(private val context: Context) {
             signaturesVerified++
 
             if (verification.manifestPackage != record.clonePackage) {
-                cacheIntegrityLabel(record, file, "Integrity: Verification failed")
+                cacheIntegrityLabel(record, file, "Integrity: Verification failed", "Manifest package is " + (verification.manifestPackage ?: "unknown") + ".")
                 issues += CloneIntegrityIssue(
                     record.clonePackage,
                     record.cloneName,
@@ -163,7 +169,7 @@ class CloneLibrary(private val context: Context) {
             if (record.sha256.isNotBlank()) {
                 val actual = calculateSha256(file)
                 if (!actual.equals(record.sha256, ignoreCase = true)) {
-                    cacheIntegrityLabel(record, file, "Integrity: Checksum mismatch")
+                    cacheIntegrityLabel(record, file, "Integrity: Checksum mismatch", "SHA-256 checksum does not match the library record.")
                     issues += CloneIntegrityIssue(
                         record.clonePackage,
                         record.cloneName,
