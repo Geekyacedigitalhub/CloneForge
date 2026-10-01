@@ -15,6 +15,20 @@ data class CloneRecord(
     val sha256: String = ""
 )
 
+data class CloneIntegrityIssue(
+    val clonePackage: String,
+    val cloneName: String,
+    val message: String
+)
+
+data class CloneIntegrityReport(
+    val checked: Int,
+    val healthy: Int,
+    val issues: List<CloneIntegrityIssue>
+) {
+    val isHealthy: Boolean get() = issues.isEmpty()
+}
+
 data class ImportedClone(
     val record: CloneRecord,
     val replacedExisting: Boolean
@@ -52,6 +66,59 @@ class CloneLibrary(private val context: Context) {
             }
         }.sortedByDescending { it.createdAt }
     }.getOrDefault(emptyList())
+
+    fun checkIntegrity(): CloneIntegrityReport {
+        val records = list()
+        val issues = mutableListOf<CloneIntegrityIssue>()
+
+        records.forEach { record ->
+            val file = File(record.apkPath)
+            if (!file.exists() || !file.isFile) {
+                issues += CloneIntegrityIssue(
+                    record.clonePackage,
+                    record.cloneName,
+                    "APK file is missing."
+                )
+                return@forEach
+            }
+
+            val verification = ApkFileVerifier().verify(file)
+            if (!verification.verified) {
+                issues += CloneIntegrityIssue(
+                    record.clonePackage,
+                    record.cloneName,
+                    verification.error ?: "APK structure could not be verified."
+                )
+                return@forEach
+            }
+
+            if (verification.manifestPackage != record.clonePackage) {
+                issues += CloneIntegrityIssue(
+                    record.clonePackage,
+                    record.cloneName,
+                    "Manifest package is " + (verification.manifestPackage ?: "unknown") + "."
+                )
+                return@forEach
+            }
+
+            if (record.sha256.isNotBlank()) {
+                val actual = calculateSha256(file)
+                if (!actual.equals(record.sha256, ignoreCase = true)) {
+                    issues += CloneIntegrityIssue(
+                        record.clonePackage,
+                        record.cloneName,
+                        "SHA-256 checksum does not match the library record."
+                    )
+                }
+            }
+        }
+
+        return CloneIntegrityReport(
+            checked = records.size,
+            healthy = records.size - issues.size,
+            issues = issues
+        )
+    }
 
     fun findByClonePackage(clonePackage: String): CloneRecord? =
         list().firstOrNull { it.clonePackage == clonePackage }
