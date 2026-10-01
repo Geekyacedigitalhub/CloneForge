@@ -70,30 +70,26 @@ class CloneLibrary(private val context: Context) {
     }
 
     fun list(): List<CloneRecord> = runCatching {
-        if (!metadataFile.exists()) return emptyList()
-        val array = JSONArray(metadataFile.readText())
-        buildList {
-            for (i in 0 until array.length()) {
-                val item = array.getJSONObject(i)
-                val path = item.getString("apkPath")
-                if (File(path).exists()) {
-                    add(
-                        CloneRecord(
-                            item.getString("cloneName"),
-                            item.getString("sourcePackage"),
-                            item.getString("clonePackage"),
-                            path,
-                            item.getLong("createdAt"),
-                            item.optString("sha256", "")
-                        )
-                    )
-                }
-            }
-        }.sortedByDescending { it.createdAt }
+        readStoredRecords()
+            .filter { File(it.apkPath).exists() }
+            .sortedByDescending { it.createdAt }
     }.getOrDefault(emptyList())
 
     fun checkIntegrity(): CloneIntegrityReport {
-        val records = list()
+        val records = runCatching { readStoredRecords() }.getOrElse {
+            return CloneIntegrityReport(
+                checked = 0,
+                healthy = 0,
+                issues = listOf(
+                    CloneIntegrityIssue(
+                        clonePackage = "unknown",
+                        cloneName = "Clone Library",
+                        message = "Clone library metadata could not be read: " +
+                            (it.message ?: "unknown error") + "."
+                    )
+                )
+            )
+        }
         val issues = mutableListOf<CloneIntegrityIssue>()
 
         records.forEach { record ->
@@ -519,6 +515,27 @@ class CloneLibrary(private val context: Context) {
         }
 
         writeRecords(validRecords)
+    }
+
+    private fun readStoredRecords(): List<CloneRecord> {
+        if (!metadataFile.exists()) return emptyList()
+
+        val array = JSONArray(metadataFile.readText())
+        return buildList {
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                add(
+                    CloneRecord(
+                        item.getString("cloneName"),
+                        item.getString("sourcePackage"),
+                        item.getString("clonePackage"),
+                        item.getString("apkPath"),
+                        item.getLong("createdAt"),
+                        item.optString("sha256", "")
+                    )
+                )
+            }
+        }
     }
 
     private fun calculateSha256(file: File): String {
