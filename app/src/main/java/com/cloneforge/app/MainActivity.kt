@@ -261,13 +261,24 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         )
         Spacer(Modifier.height(8.dp))
         val previewPackage = PackageIdentity.validate(app.packageName, packageSuffix.trim()).getOrNull()
+        val cloneLibrary = remember { CloneLibrary(context) }
+        val packageTaken = previewPackage?.let { isPackageInstalled(context, it) || cloneLibrary.findByClonePackage(it) != null } == true
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp)) {
                 Text("Package preview", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    previewPackage ?: "Enter a valid package suffix",
-                    style = MaterialTheme.typography.bodyMedium
+                    when {
+                        previewPackage == null -> "Enter a valid package suffix"
+                        packageTaken -> "Package already in use: $previewPackage"
+                        else -> previewPackage
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (previewPackage == null || packageTaken) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
                 )
             }
         }
@@ -295,7 +306,11 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                     }
                 }
             },
-            enabled = !busy && cloneName.isNotBlank() && packageSuffix.isNotBlank(),
+            enabled = !busy &&
+                cloneName.isNotBlank() &&
+                packageSuffix.isNotBlank() &&
+                previewPackage != null &&
+                !packageTaken,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(if (busy) "Building…" else "Build & Sign Clone")
