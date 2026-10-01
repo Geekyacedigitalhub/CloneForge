@@ -113,6 +113,16 @@ class CloneLibrary(private val context: Context) {
                 return@forEach
             }
 
+            val signatureVerification = ApkSignatureVerifier().verify(file)
+            if (!signatureVerification.verified) {
+                issues += CloneIntegrityIssue(
+                    record.clonePackage,
+                    record.cloneName,
+                    signatureVerification.error ?: "APK cryptographic signature could not be verified."
+                )
+                return@forEach
+            }
+
             if (verification.manifestPackage != record.clonePackage) {
                 issues += CloneIntegrityIssue(
                     record.clonePackage,
