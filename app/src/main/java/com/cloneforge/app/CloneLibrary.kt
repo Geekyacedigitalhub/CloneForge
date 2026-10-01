@@ -153,6 +153,7 @@ class CloneLibrary(private val context: Context) {
             it.apkPath == record.apkPath || it.clonePackage == record.clonePackage
         } + record
         writeRecords(records)
+        integrityCache.remove(record.apkPath)
     }
 
     fun importApk(uri: Uri): ImportedClone {
