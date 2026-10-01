@@ -24,6 +24,27 @@ class CloneService(private val context: Context) {
         cloneIndex: Int? = null,
         packageSuffix: String? = null
     ): Result<CloneArtifact> = runCatching {
+        require(cloneName.isNotBlank()) { "Clone name cannot be empty." }
+
+        val requestedIndex = cloneIndex ?: nextAvailableCloneIndex(sourcePackage)
+        val plan = if (packageSuffix.isNullOrBlank()) {
+            ClonePlanner.create(sourcePackage, cloneName, requestedIndex)
+        } else {
+            ClonePlanner.createWithSuffix(
+                sourcePackage,
+                cloneName,
+                packageSuffix,
+                requestedIndex
+            )
+        }
+
+        require(library.findByClonePackage(plan.clonePackage) == null) {
+            "A clone with package ${plan.clonePackage} already exists. Use a different package suffix or delete the existing clone first."
+        }
+        require(!isPackageInstalled(plan.clonePackage)) {
+            "The package ${plan.clonePackage} is already installed. Use a different package suffix."
+        }
+
         val applicationInfo = context.packageManager.getApplicationInfo(sourcePackage, 0)
         val source = engine.inspect(applicationInfo)
             ?: error("Unable to inspect the selected installed app.")
@@ -34,23 +55,6 @@ class CloneService(private val context: Context) {
 
         val workspace = engine.prepareWorkspace(source)
         engine.copySourceApk(source, workspace)
-
-        val requestedIndex = cloneIndex ?: nextAvailableCloneIndex(source.packageName)
-
-        val plan = if (packageSuffix.isNullOrBlank()) {
-            ClonePlanner.create(source.packageName, cloneName, requestedIndex)
-        } else {
-            ClonePlanner.createWithSuffix(
-                source.packageName,
-                cloneName,
-                packageSuffix,
-                requestedIndex
-            )
-        }
-
-        require(library.findByClonePackage(plan.clonePackage) == null) {
-            "A clone with package ${plan.clonePackage} already exists. Use a different package suffix or delete the existing clone first."
-        }
 
         val cloneWorkspaceRoot = File(
             context.filesDir,
@@ -70,6 +74,16 @@ class CloneService(private val context: Context) {
 
         signer.sign(unsigned.apkFile, signedOutput).getOrThrow()
 
+        library.add(
+            CloneRecord(
+                cloneName = plan.cloneName,
+                sourcePackage = plan.sourcePackage,
+                clonePackage = plan.clonePackage,
+                apkPath = signedOutput.absolutePath,
+                createdAt = System.currentTimeMillis()
+            )
+        )
+
         CloneArtifact(
             apkFile = signedOutput,
             sourcePackage = plan.sourcePackage,
@@ -80,14 +94,20 @@ class CloneService(private val context: Context) {
 
     private fun nextAvailableCloneIndex(sourcePackage: String): Int {
         var index = 1
-        while (library.findByClonePackage(
-                PackageIdentity.createClonePackage(sourcePackage, index)
-            ) != null
-        ) {
+        while (true) {
+            val candidate = PackageIdentity.createClonePackage(sourcePackage, index)
+            if (library.findByClonePackage(candidate) == null && !isPackageInstalled(candidate)) {
+                return index
+            }
             index++
         }
-        return index
     }
+
+    private fun isPackageInstalled(packageName: String): Boolean =
+        runCatching {
+            context.packageManager.getApplicationInfo(packageName, 0)
+            true
+        }.getOrDefault(false)
 
     private fun sanitize(value: String): String =
         value.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "app" }
