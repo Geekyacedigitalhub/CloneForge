@@ -38,8 +38,26 @@ class CloneLibrary(private val context: Context) {
         }.sortedByDescending { it.createdAt }
     }.getOrDefault(emptyList())
 
+    fun findByClonePackage(clonePackage: String): CloneRecord? =
+        list().firstOrNull { it.clonePackage == clonePackage }
+
     fun add(record: CloneRecord) {
-        val records = list().filterNot { it.apkPath == record.apkPath } + record
+        val records = list().filterNot {
+            it.apkPath == record.apkPath || it.clonePackage == record.clonePackage
+        } + record
+        writeRecords(records)
+    }
+
+    fun delete(record: CloneRecord): Boolean {
+        val deleted = File(record.apkPath).delete()
+        val remaining = list().filterNot {
+            it.apkPath == record.apkPath || it.clonePackage == record.clonePackage
+        }
+        writeRecords(remaining)
+        return deleted
+    }
+
+    private fun writeRecords(records: List<CloneRecord>) {
         val array = JSONArray()
         records.forEach {
             array.put(JSONObject().apply {
@@ -51,22 +69,5 @@ class CloneLibrary(private val context: Context) {
             })
         }
         metadataFile.writeText(array.toString())
-    }
-
-    fun delete(record: CloneRecord): Boolean {
-        val deleted = File(record.apkPath).delete()
-        val remaining = list().filterNot { it.apkPath == record.apkPath }
-        val array = JSONArray()
-        remaining.forEach {
-            array.put(JSONObject().apply {
-                put("cloneName", it.cloneName)
-                put("sourcePackage", it.sourcePackage)
-                put("clonePackage", it.clonePackage)
-                put("apkPath", it.apkPath)
-                put("createdAt", it.createdAt)
-            })
-        }
-        metadataFile.writeText(array.toString())
-        return deleted
     }
 }
