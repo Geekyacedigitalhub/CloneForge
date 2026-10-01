@@ -294,7 +294,7 @@ private fun CloneForgeApp(
                                             if (record.clonePackage in installedPackages) "Update" else "Install"
                                         )
                                     }
-                                    TextButton(onClick = { shareCloneApk(context, file) }) { Text("Share") }
+                                    TextButton(onClick = { shareCloneApk(context, file, record.cloneName, record.sourcePackage, record.clonePackage) }) { Text("Share") }
                                     TextButton(onClick = {
                                         cloneLibrary.delete(record)
                                         library = cloneLibrary.list()
@@ -687,7 +687,7 @@ Path: ${built.apkFile.absolutePath}"
                             Text("Install")
                         }
                         OutlinedButton(
-                            onClick = { shareCloneApk(context, built.apkFile) },
+                            onClick = { shareCloneApk(context, built.apkFile, built.cloneName, app.packageName, built.clonePackage) },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text("Share APK")
@@ -764,18 +764,47 @@ private fun isPackageInstalled(context: android.content.Context, packageName: St
         true
     }.getOrDefault(false)
 
-private fun shareCloneApk(context: android.content.Context, apkFile: java.io.File) {
+private fun shareCloneApk(
+    context: android.content.Context,
+    apkFile: java.io.File,
+    cloneName: String,
+    sourcePackage: String,
+    clonePackage: String
+) {
     val uri = FileProvider.getUriForFile(
         context,
         "${context.packageName}.fileprovider",
         apkFile
     )
+    val shareText = buildString {
+        appendLine("CloneForge APK")
+        appendLine("Clone: $cloneName")
+        appendLine("Source package: $sourcePackage")
+        appendLine("Clone package: $clonePackage")
+        appendLine("APK: ${apkFile.name}")
+        appendLine("Size: ${formatFileSize(apkFile.length())}")
+        append("SHA-256: ${sha256(apkFile)}")
+    }
     val shareIntent = Intent(Intent.ACTION_SEND).apply {
         type = "application/vnd.android.package-archive"
         putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_TEXT, shareText)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(shareIntent, "Share Clone APK"))
+}
+
+private fun sha256(file: java.io.File): String {
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+        val buffer = ByteArray(8192)
+        while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            digest.update(buffer, 0, read)
+        }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
 private fun openCloneInstaller(context: android.content.Context, apkFile: java.io.File) {
