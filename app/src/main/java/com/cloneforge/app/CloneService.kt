@@ -26,6 +26,7 @@ class CloneService(private val context: Context) {
         onProgress: ((String) -> Unit)? = null
     ): Result<CloneArtifact> {
         var stage = "clone setup"
+        var sourceWorkspace: File? = null
         return runCatching {
         stage = "validation"
         onProgress?.invoke("Validating clone settings…")
@@ -63,6 +64,7 @@ class CloneService(private val context: Context) {
         stage = "workspace preparation"
         onProgress?.invoke("Preparing clone workspace…")
         val workspace = engine.prepareWorkspace(source)
+        sourceWorkspace = workspace
         engine.copySourceApk(source, workspace)
 
         val cloneWorkspaceRoot = File(
@@ -109,6 +111,8 @@ class CloneService(private val context: Context) {
         } catch (error: Throwable) {
             cloneWorkspaceRoot.deleteRecursively()
             throw error
+        } finally {
+            sourceWorkspace?.deleteRecursively()
         }
         }.fold(
             onSuccess = { Result.success(it) },
