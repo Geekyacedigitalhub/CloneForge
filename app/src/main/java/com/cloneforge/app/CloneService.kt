@@ -11,7 +11,8 @@ class CloneService(private val context: Context) {
     fun buildInstalledAppClone(
         sourcePackage: String,
         cloneName: String,
-        cloneIndex: Int
+        cloneIndex: Int,
+        packageSuffix: String? = null
     ): Result<UnsignedCloneArtifact> = runCatching {
         val applicationInfo = context.packageManager.getApplicationInfo(sourcePackage, 0)
         val source = engine.inspect(applicationInfo)
@@ -19,11 +20,11 @@ class CloneService(private val context: Context) {
         val workspace = engine.prepareWorkspace(source)
         engine.copySourceApk(source, workspace)
 
-        val plan = ClonePlanner.create(
-            sourcePackage = source.packageName,
-            cloneName = cloneName,
-            cloneIndex = cloneIndex
-        )
+        val plan = if (packageSuffix.isNullOrBlank()) {
+            ClonePlanner.create(source.packageName, cloneName, cloneIndex)
+        } else {
+            ClonePlanner.createWithSuffix(source.packageName, cloneName, packageSuffix, cloneIndex)
+        }
 
         pipeline.buildUnsignedClone(
             sourceApk = File(workspace, "source.apk"),
