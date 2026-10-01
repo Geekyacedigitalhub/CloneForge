@@ -80,6 +80,7 @@ private fun CloneForgeApp(
     var libraryQuery by remember { mutableStateOf("") }
     var libraryFilter by remember { mutableStateOf("All") }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
+    var deleteFeedback by remember { mutableStateOf<String?>(null) }
 
     fun refreshLibrary() {
         cloneLibrary.cleanupStaleRecords()
@@ -96,8 +97,15 @@ private fun CloneForgeApp(
             text = { Text("This deletes saved clone APKs and build workspaces. Installed clones are not uninstalled.") },
             confirmButton = {
                 TextButton(onClick = {
+                    val removedCount = library.size
+                    val reclaimedBytes = library.sumOf { java.io.File(it.apkPath).length() }
                     cloneLibrary.deleteAll()
                     library = cloneLibrary.list()
+                    deleteFeedback = if (removedCount == 0) {
+                        "No clone APKs were available to delete."
+                    } else {
+                        "Removed $removedCount clone(s) and reclaimed " + formatFileSize(reclaimedBytes) + "."
+                    }
                     showDeleteAllDialog = false
                 }) { Text("Delete all") }
             },
