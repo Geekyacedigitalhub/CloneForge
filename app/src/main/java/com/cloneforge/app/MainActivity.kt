@@ -162,6 +162,7 @@ private fun CloneForgeApp(
                                         Text(record.clonePackage, style = MaterialTheme.typography.bodySmall)
                                         Text("Source: " + record.sourcePackage, style = MaterialTheme.typography.bodySmall)
                                         Text("APK: " + file.name, style = MaterialTheme.typography.bodySmall)
+                                        Text("Size: " + formatFileSize(file.length()), style = MaterialTheme.typography.bodySmall)
                                         Text(
                                             "Created: " + DateFormat.getDateTimeInstance(
                                                 DateFormat.MEDIUM,
@@ -478,6 +479,23 @@ Path: ${built.apkFile.absolutePath}"
             "The APK was rebuilt and signed with CloneForge’s on-device signing key.",
             style = MaterialTheme.typography.bodySmall
         )
+    }
+}
+
+
+private fun formatFileSize(bytes: Long): String {
+    if (bytes < 1024L) return "$bytes B"
+    val units = arrayOf("KB", "MB", "GB")
+    var value = bytes.toDouble() / 1024.0
+    var unitIndex = 0
+    while (value >= 1024.0 && unitIndex < units.lastIndex) {
+        value /= 1024.0
+        unitIndex++
+    }
+    return if (value >= 100.0) {
+        String.format(java.util.Locale.getDefault(), "%.0f %s", value, units[unitIndex])
+    } else {
+        String.format(java.util.Locale.getDefault(), "%.1f %s", value, units[unitIndex])
     }
 }
 
