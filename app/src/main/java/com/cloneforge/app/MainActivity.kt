@@ -259,6 +259,18 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
             modifier = Modifier.fillMaxWidth(),
             enabled = !busy
         )
+        Spacer(Modifier.height(8.dp))
+        val previewPackage = PackageIdentity.validate(app.packageName, packageSuffix.trim()).getOrNull()
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                Text("Package preview", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    previewPackage ?: "Enter a valid package suffix",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
         Spacer(Modifier.height(20.dp))
         Button(
             onClick = {
