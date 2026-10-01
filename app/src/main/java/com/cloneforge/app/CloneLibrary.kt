@@ -21,6 +21,12 @@ data class ImportedClone(
 )
 
 class CloneLibrary(private val context: Context) {
+    companion object {
+        private const val MAX_BACKUP_ENTRIES = 512
+        private const val MAX_BACKUP_CLONES = 256
+        private const val MAX_BACKUP_BYTES = 512L * 1024L * 1024L
+    }
+
     private val metadataFile get() = File(context.filesDir, "clone-library.json")
     private val buildRoot get() = File(context.filesDir, "clone-builds")
 
@@ -194,27 +200,55 @@ class CloneLibrary(private val context: Context) {
         try {
             input.use { source ->
                 java.util.zip.ZipInputStream(source).use { zip ->
+                    val seenEntries = mutableSetOf<String>()
+                    var entryCount = 0
+                    var extractedBytes = 0L
+
                     while (true) {
                         val entry = zip.nextEntry ?: break
+                        entryCount++
+                        require(entryCount <= MAX_BACKUP_ENTRIES) {
+                            "Backup contains too many files."
+                        }
+
                         val safeName = entry.name.replace('\\', '/')
+                        require(safeName.isNotBlank() && !safeName.startsWith("/")) {
+                            "Backup contains an unsafe path."
+                        }
+
                         if (entry.isDirectory) {
                             zip.closeEntry()
                             continue
                         }
 
-                        when {
-                            safeName == "cloneforge-backup.json" -> {
-                                metadataFile.outputStream().use { output -> zip.copyTo(output) }
-                            }
+                        require(seenEntries.add(safeName)) {
+                            "Backup contains duplicate entries."
+                        }
+
+                        val destination = when {
+                            safeName == "cloneforge-backup.json" -> metadataFile
                             safeName.startsWith("apks/") &&
                                 safeName.substringAfter("apks/").matches(Regex("[0-9]+\\.apk")) -> {
-                                val destination = File(
+                                File(
                                     restoreRoot,
                                     safeName.substringAfter("apks/")
                                 )
-                                destination.outputStream().use { output -> zip.copyTo(output) }
                             }
                             else -> error("Backup contains an unsupported or unsafe entry.")
+                        }
+
+                        destination.parentFile?.mkdirs()
+                        destination.outputStream().use { output ->
+                            val buffer = ByteArray(8192)
+                            while (true) {
+                                val read = zip.read(buffer)
+                                if (read == -1) break
+                                extractedBytes += read
+                                require(extractedBytes <= MAX_BACKUP_BYTES) {
+                                    "Backup is too large to restore safely."
+                                }
+                                output.write(buffer, 0, read)
+                            }
                         }
                         zip.closeEntry()
                     }
@@ -231,6 +265,11 @@ class CloneLibrary(private val context: Context) {
             }
 
             val clones = metadata.optJSONArray("clones") ?: JSONArray()
+            require(clones.length() <= MAX_BACKUP_CLONES) {
+                "Backup contains too many clones."
+            }
+
+            val referencedEntries = mutableSetOf<String>()
             var restored = 0
 
             for (i in 0 until clones.length()) {
@@ -240,6 +279,9 @@ class CloneLibrary(private val context: Context) {
                     entryName.startsWith("apks/") &&
                         entryName.substringAfter("apks/").matches(Regex("[0-9]+\\.apk"))
                 ) { "Backup contains an invalid APK reference." }
+                require(referencedEntries.add(entryName)) {
+                    "Backup contains duplicate APK references."
+                }
 
                 val sourceApk = File(restoreRoot, entryName.substringAfter("apks/"))
                 require(sourceApk.exists() && sourceApk.isFile) {
@@ -304,6 +346,7 @@ class CloneLibrary(private val context: Context) {
             restoreRoot.deleteRecursively()
         }
     }
+
 
     fun delete(record: CloneRecord): Boolean {
         val apkFile = File(record.apkPath)
