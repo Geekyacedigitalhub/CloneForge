@@ -24,7 +24,10 @@ class CloneService(private val context: Context) {
         cloneIndex: Int? = null,
         packageSuffix: String? = null,
         onProgress: ((String) -> Unit)? = null
-    ): Result<CloneArtifact> = runCatching {
+    ): Result<CloneArtifact> {
+        var stage = "clone setup"
+        return runCatching {
+        stage = "validation"
         onProgress?.invoke("Validating clone settings…")
         require(cloneName.isNotBlank()) { "Clone name cannot be empty." }
 
@@ -47,6 +50,7 @@ class CloneService(private val context: Context) {
             "The package ${plan.clonePackage} is already installed. Use a different package suffix."
         }
 
+        stage = "source APK inspection"
         onProgress?.invoke("Inspecting source APK…")
         val applicationInfo = context.packageManager.getApplicationInfo(sourcePackage, 0)
         val source = engine.inspect(applicationInfo)
@@ -56,6 +60,7 @@ class CloneService(private val context: Context) {
             preflightResult.compatibility.issues.joinToString(" ")
         }
 
+        stage = "workspace preparation"
         onProgress?.invoke("Preparing clone workspace…")
         val workspace = engine.prepareWorkspace(source)
         engine.copySourceApk(source, workspace)
@@ -66,6 +71,7 @@ class CloneService(private val context: Context) {
         )
 
         try {
+            stage = "APK rebuilding"
             onProgress?.invoke("Rebuilding APK package identity…")
             val unsigned = pipeline.buildUnsignedClone(
                 sourceApk = File(workspace, "source.apk"),
@@ -78,9 +84,11 @@ class CloneService(private val context: Context) {
                 sanitize(plan.cloneName) + "-" + sanitize(plan.clonePackage) + ".apk"
             )
 
+            stage = "APK signing"
             onProgress?.invoke("Signing clone APK…")
             signer.sign(unsigned.apkFile, signedOutput).getOrThrow()
 
+            stage = "library save"
             onProgress?.invoke("Saving clone to library…")
             library.add(
                 CloneRecord(
@@ -102,6 +110,18 @@ class CloneService(private val context: Context) {
             cloneWorkspaceRoot.deleteRecursively()
             throw error
         }
+        }.fold(
+            onSuccess = { Result.success(it) },
+            onFailure = { error ->
+                Result.failure(
+                    IllegalStateException(
+                        "Clone build failed during " + stage + ": " +
+                            (error.message ?: error::class.java.simpleName),
+                        error
+                    )
+                )
+            }
+        )
     }
 
     fun nextAvailableCloneIndexForUi(sourcePackage: String): Int =
