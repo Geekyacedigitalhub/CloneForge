@@ -79,6 +79,7 @@ private fun CloneForgeApp(
     var library by remember { mutableStateOf(cloneLibrary.list()) }
     var libraryQuery by remember { mutableStateOf("") }
     var libraryFilter by remember { mutableStateOf("All") }
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
 
     fun refreshLibrary() {
         cloneLibrary.cleanupStaleRecords()
@@ -88,13 +89,34 @@ private fun CloneForgeApp(
     LaunchedEffect(Unit) {
         onLibraryReady { refreshLibrary() }
     }
+    if (showDeleteAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllDialog = false },
+            title = { Text("Delete all clones?") },
+            text = { Text("This deletes saved clone APKs and build workspaces. Installed clones are not uninstalled.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    library.forEach { cloneLibrary.delete(it) }
+                    library = cloneLibrary.list()
+                    showDeleteAllDialog = false
+                }) { Text("Delete all") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAllDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     Scaffold(topBar = { TopAppBar(title = { Text("CloneForge") }) }) { padding ->
         if (selected == null) {
             Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                 Text("Installed Apps", style = MaterialTheme.typography.headlineSmall)
                 if (library.isNotEmpty()) {
                     Spacer(Modifier.height(20.dp))
-                    Text("Clone Library", style = MaterialTheme.typography.titleLarge)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Clone Library", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { showDeleteAllDialog = true }) { Text("Delete all") }
+                    }
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = libraryQuery,
