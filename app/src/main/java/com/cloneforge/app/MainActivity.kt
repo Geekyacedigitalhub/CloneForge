@@ -540,7 +540,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                     Surface(
                         shape = MaterialTheme.shapes.small,
                         color = if (compatibility.supported) {
-                            if (compatibility.warnings.isEmpty()) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
+                            if (!compatibility.hasWarnings) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
                         } else {
                             MaterialTheme.colorScheme.errorContainer
                         }
@@ -548,14 +548,14 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                         Text(
                             when {
                                 !compatibility.supported -> "BLOCKED — fix required"
-                                compatibility.warnings.isNotEmpty() -> "READY WITH WARNINGS"
+                                compatibility.hasWarnings -> "READY WITH WARNINGS"
                                 else -> "READY TO CLONE"
                             },
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             style = MaterialTheme.typography.labelLarge,
                             color = when {
                                 !compatibility.supported -> MaterialTheme.colorScheme.onErrorContainer
-                                compatibility.warnings.isNotEmpty() -> MaterialTheme.colorScheme.onSecondaryContainer
+                                compatibility.hasWarnings -> MaterialTheme.colorScheme.onSecondaryContainer
                                 else -> MaterialTheme.colorScheme.onPrimaryContainer
                             }
                         )
@@ -564,7 +564,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                     Text(compatibility.title)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "${compatibility.issues.size} blocking issue(s) • ${compatibility.warnings.size} warning(s)",
+                        "${compatibility.issues.size} blocking issue(s) • ${compatibility.warnings.size} warning(s)" + if (compatibility.packageReferenceCount > 0) " • ${compatibility.packageReferenceCount} raw package reference(s)" else "",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(Modifier.height(10.dp))
@@ -626,7 +626,8 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                                         stage.startsWith("Preparing") -> 0.40f
                                         stage.startsWith("Rebuilding") -> 0.65f
                                         stage.startsWith("Signing") -> 0.85f
-                                        stage.startsWith("Saving") -> 0.95f
+                                        stage.startsWith("Verifying") -> 0.92f
+                                        stage.startsWith("Saving") -> 0.97f
                                         else -> progress
                                     }
                                 }
