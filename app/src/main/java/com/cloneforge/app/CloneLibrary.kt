@@ -5,6 +5,7 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 data class CloneRecord(
     val cloneName: String,
@@ -45,7 +46,7 @@ class CloneLibrary(private val context: Context) {
 
     private val metadataFile get() = File(context.filesDir, "clone-library.json")
     private val buildRoot get() = File(context.filesDir, "clone-builds")
-    private val integrityCache = mutableMapOf<String, Triple<Long, Long, String>>();
+    private val integrityCache = ConcurrentHashMap<String, Triple<Long, Long, String>>()
 
     fun integrityLabel(record: CloneRecord): String {
         val file = File(record.apkPath)
