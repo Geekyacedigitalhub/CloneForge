@@ -12,6 +12,8 @@ object CloneCompatibilityChecker {
     fun check(inspection: ApkInspection, isSplitApk: Boolean = false, packageReferenceCount: Int = 0): CloneCompatibility {
         val issues = mutableListOf<String>()
         val warnings = mutableListOf<String>()
+        warnings += "The clone is signed with CloneForge’s on-device signing key, not the source app’s original certificate."
+        warnings += "Apps that verify their original signature, use shared signing identities, Play Integrity, or signature-based licensing may not work after cloning."
 
         if (!inspection.hasManifest) issues += "AndroidManifest.xml is missing."
         if (!inspection.hasDex) issues += "No DEX bytecode was found."
