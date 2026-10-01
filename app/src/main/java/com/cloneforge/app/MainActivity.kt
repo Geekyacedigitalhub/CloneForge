@@ -14,6 +14,8 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
@@ -51,7 +53,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        CloneLibrary(this).apply {\n            cleanupStaleRecords()\n            cleanupOrphanedBuildWorkspaces()\n        }
+        CloneLibrary(this).apply {
+            cleanupStaleRecords()
+            cleanupOrphanedBuildWorkspaces()
+        }
         val apps = loadLaunchableApps()
         setContent {
             MaterialTheme {
@@ -531,12 +536,37 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
             Spacer(Modifier.height(16.dp))
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
+                    val compatibility = report.compatibility
                     Text("Compatibility check", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(6.dp))
-                    Text(report.compatibility.title)
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = if (compatibility.supported) {
+                            if (compatibility.warnings.isEmpty()) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.errorContainer
+                        }
+                    ) {
+                        Text(
+                            when {
+                                !compatibility.supported -> "BLOCKED — fix required"
+                                compatibility.warnings.isNotEmpty() -> "READY WITH WARNINGS"
+                                else -> "READY TO CLONE"
+                            },
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = when {
+                                !compatibility.supported -> MaterialTheme.colorScheme.onErrorContainer
+                                compatibility.warnings.isNotEmpty() -> MaterialTheme.colorScheme.onSecondaryContainer
+                                else -> MaterialTheme.colorScheme.onPrimaryContainer
+                            }
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(compatibility.title)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "${report.compatibility.issues.size} blocking issue(s) • ${report.compatibility.warnings.size} warning(s)",
+                        "${compatibility.issues.size} blocking issue(s) • ${compatibility.warnings.size} warning(s)",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(Modifier.height(10.dp))
@@ -546,11 +576,11 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                             .heightIn(max = 180.dp)
                             .verticalScroll(rememberScrollState())
                     ) {
-                        report.compatibility.issues.forEach { issue ->
+                        compatibility.issues.forEach { issue ->
                             Text("• $issue", color = MaterialTheme.colorScheme.error)
                             Spacer(Modifier.height(6.dp))
                         }
-                        report.compatibility.warnings.forEach { warning ->
+                        compatibility.warnings.forEach { warning ->
                             Text("• $warning", style = MaterialTheme.typography.bodySmall)
                             Spacer(Modifier.height(6.dp))
                         }
