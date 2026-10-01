@@ -78,6 +78,7 @@ private fun CloneForgeApp(
     val cloneLibrary = remember { CloneLibrary(context) }
     var library by remember { mutableStateOf(cloneLibrary.list()) }
     var libraryQuery by remember { mutableStateOf("") }
+    var appQuery by remember { mutableStateOf("") }
     var libraryFilter by remember { mutableStateOf("All") }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var deleteFeedback by remember { mutableStateOf<String?>(null) }
