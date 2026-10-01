@@ -58,6 +58,20 @@ class CloneLibrary(private val context: Context) {
             return cached.third
         }
 
+        return cached?.third ?: "Integrity: Checking…"
+    }
+
+    fun verifyIntegrityLabel(record: CloneRecord): String {
+        val file = File(record.apkPath)
+        if (!file.exists() || !file.isFile) return "Integrity: APK missing"
+        if (record.sha256.isBlank()) return "Integrity: Not checked"
+
+        val fingerprint = Pair(file.length(), file.lastModified())
+        val cached = integrityCache[record.apkPath]
+        if (cached?.first == fingerprint.first && cached.second == fingerprint.second) {
+            return cached.third
+        }
+
         val label = if (sha256(file).equals(record.sha256, ignoreCase = true)) {
             "Integrity: Verified"
         } else {
