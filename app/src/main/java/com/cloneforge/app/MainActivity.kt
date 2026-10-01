@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        CloneLibrary(this).cleanupStaleRecords()
+        CloneLibrary(this).apply {\n            cleanupStaleRecords()\n            cleanupOrphanedBuildWorkspaces()\n        }
         val apps = loadLaunchableApps()
         setContent {
             MaterialTheme {
