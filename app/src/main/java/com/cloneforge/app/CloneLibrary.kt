@@ -1,6 +1,7 @@
 package com.cloneforge.app
 
 import android.content.Context
+import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -11,6 +12,11 @@ data class CloneRecord(
     val clonePackage: String,
     val apkPath: String,
     val createdAt: Long
+)
+
+data class ImportedClone(
+    val record: CloneRecord,
+    val replacedExisting: Boolean
 )
 
 class CloneLibrary(private val context: Context) {
@@ -49,6 +55,66 @@ class CloneLibrary(private val context: Context) {
         writeRecords(records)
     }
 
+    fun importApk(uri: Uri): ImportedClone {
+        val input = context.contentResolver.openInputStream(uri)
+            ?: error("Unable to open the selected APK.")
+
+        val importRoot = File(buildRoot, "imports").apply { mkdirs() }
+        val tempFile = File(importRoot, "incoming-\${System.currentTimeMillis()}.apk")
+
+        input.use { source ->
+            tempFile.outputStream().use { target ->
+                source.copyTo(target)
+            }
+        }
+
+        val manifestEntry = java.util.zip.ZipFile(tempFile).use { zip ->
+            zip.getEntry("AndroidManifest.xml")
+                ?: error("The selected file is not a valid APK: AndroidManifest.xml is missing.")
+        }
+
+        val manifestInfo = java.util.zip.ZipFile(tempFile).use { zip ->
+            BinaryManifestReader().read(
+                zip.getInputStream(manifestEntry).use { it.readBytes() }
+            )
+        }
+
+        val clonePackage = manifestInfo.packageName?.takeIf { it.isNotBlank() }
+            ?: error("The selected APK does not contain a readable package name.")
+
+        val apkInspection = ApkInspector().inspect(tempFile)
+        require(apkInspection.hasDex) { "The selected APK does not contain DEX bytecode." }
+
+        val originalName = manifestInfo.applicationLabel?.takeIf { it.isNotBlank() }
+            ?: tempFile.nameWithoutExtension.ifBlank { "Imported Clone" }
+
+        val existing = findByClonePackage(clonePackage)
+        val destinationDir = File(importRoot, sanitize(clonePackage)).apply {
+            mkdirs()
+        }
+        val destination = File(destinationDir, "\${sanitize(originalName)}.apk")
+        tempFile.copyTo(destination, overwrite = true)
+        tempFile.delete()
+
+        existing?.let {
+            File(it.apkPath).delete()
+            File(buildRoot, sanitize(it.clonePackage))
+                .takeIf { workspace -> workspace != destinationDir }
+                ?.deleteRecursively()
+        }
+
+        val record = CloneRecord(
+            cloneName = originalName,
+            sourcePackage = "Unknown (imported APK)",
+            clonePackage = clonePackage,
+            apkPath = destination.absolutePath,
+            createdAt = System.currentTimeMillis()
+        )
+
+        add(record)
+        return ImportedClone(record, replacedExisting = existing != null)
+    }
+
     fun delete(record: CloneRecord): Boolean {
         val apkFile = File(record.apkPath)
         val deleted = !apkFile.exists() || apkFile.delete()
@@ -70,7 +136,7 @@ class CloneLibrary(private val context: Context) {
             .mapTo(mutableSetOf()) { sanitize(it.clonePackage) }
 
         buildRoot.listFiles()
-            ?.filter { it.isDirectory && it.name !in referencedPackages }
+            ?.filter { it.isDirectory && it.name !in referencedPackages && it.name != "imports" }
             ?.forEach { it.deleteRecursively() }
     }
 
