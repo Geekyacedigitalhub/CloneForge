@@ -1,6 +1,9 @@
 package com.cloneforge.app
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -12,11 +15,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -28,7 +33,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class InstalledApp(val label: String, val packageName: String, val versionName: String)
+data class InstalledApp(
+    val label: String,
+    val packageName: String,
+    val versionName: String,
+    val icon: Bitmap
+)
 
 class MainActivity : ComponentActivity() {
 
@@ -61,7 +71,12 @@ class MainActivity : ComponentActivity() {
                 val info = resolve.activityInfo?.applicationInfo ?: return@mapNotNull null
                 if (info.packageName == packageName) return@mapNotNull null
                 val version = runCatching { pm.getPackageInfo(info.packageName, 0).versionName ?: "unknown" }.getOrDefault("unknown")
-                InstalledApp(pm.getApplicationLabel(info).toString(), info.packageName, version)
+                InstalledApp(
+                    label = pm.getApplicationLabel(info).toString(),
+                    packageName = info.packageName,
+                    versionName = version,
+                    icon = drawableToBitmap(info.loadIcon(pm))
+                )
             }
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
@@ -305,6 +320,12 @@ private fun CloneForgeApp(
                         items(filteredApps) { app ->
                             Card(Modifier.fillMaxWidth().clickable { selected = app }) {
                                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Image(
+                                        bitmap = app.icon.asImageBitmap(),
+                                        contentDescription = app.label,
+                                        modifier = Modifier.size(52.dp)
+                                    )
+                                    Spacer(Modifier.width(14.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(app.label, style = MaterialTheme.typography.titleMedium)
                                         Text(app.packageName, style = MaterialTheme.typography.bodySmall)
@@ -584,6 +605,16 @@ Path: ${built.apkFile.absolutePath}"
     }
 }
 
+
+private fun drawableToBitmap(drawable: Drawable): Bitmap {
+    val width = drawable.intrinsicWidth.coerceAtLeast(1)
+    val height = drawable.intrinsicHeight.coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    drawable.setBounds(0, 0, canvas.width, canvas.height)
+    drawable.draw(canvas)
+    return bitmap
+}
 
 private fun formatFileSize(bytes: Long): String {
     if (bytes < 1024L) return "$bytes B"
