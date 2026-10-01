@@ -51,7 +51,8 @@ class MainActivity : ComponentActivity() {
 private fun CloneForgeApp(apps: List<InstalledApp>) {
     val context = LocalContext.current
     var selected by remember { mutableStateOf<InstalledApp?>(null) }
-    var library by remember { mutableStateOf(CloneLibrary(LocalContext.current).list()) }
+    val cloneLibrary = remember { CloneLibrary(context) }
+    var library by remember { mutableStateOf(cloneLibrary.list()) }
     Scaffold(topBar = { TopAppBar(title = { Text("CloneForge") }) }) { padding ->
         if (selected == null) {
             Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
@@ -70,7 +71,10 @@ private fun CloneForgeApp(apps: List<InstalledApp>) {
                                         Text(record.clonePackage, style = MaterialTheme.typography.bodySmall)
                                     }
                                     TextButton(onClick = { openCloneInstaller(context, file) }) { Text("Install") }
-                                    TextButton(onClick = { CloneLibrary(context).delete(record); library = CloneLibrary(context).list() }) { Text("Delete") }
+                                    TextButton(onClick = {
+                                        cloneLibrary.delete(record)
+                                        library = cloneLibrary.list()
+                                    }) { Text("Delete") }
                                 }
                             }
                         }
