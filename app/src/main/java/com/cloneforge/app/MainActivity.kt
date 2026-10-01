@@ -2,7 +2,10 @@ package com.cloneforge.app
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
@@ -15,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,6 +87,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var artifact by remember { mutableStateOf<CloneArtifact?>(null) }
 
     Column(modifier.fillMaxSize().padding(24.dp)) {
         TextButton(onClick = onBack, enabled = !busy) { Text("← Back") }
@@ -122,8 +127,9 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                         )
                     }
                     busy = false
-                    result.onSuccess { artifact ->
-                        status = "Signed APK created: ${artifact.apkFile.name}\nPackage: ${artifact.clonePackage}\nPath: ${artifact.apkFile.absolutePath}"
+                    result.onSuccess { built ->
+                        artifact = built
+                        status = "Signed APK created: ${built.apkFile.name}\nPackage: ${built.clonePackage}\nPath: ${built.apkFile.absolutePath}"
                     }.onFailure { throwable ->
                         status = null
                         error = throwable.message ?: "Clone build failed."
@@ -134,6 +140,14 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(if (busy) "Building…" else "Build & Sign Clone")
+        }
+
+        artifact?.let { built ->
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = { openCloneInstaller(context, built.apkFile) },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Install Clone") }
         }
 
         status?.let {
@@ -154,4 +168,27 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
             style = MaterialTheme.typography.bodySmall
         )
     }
+}
+
+private fun openCloneInstaller(context: android.content.Context, apkFile: java.io.File) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+        val settingsIntent = Intent(
+            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            Uri.parse("package:${context.packageName}")
+        )
+        context.startActivity(settingsIntent)
+        return
+    }
+
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        apkFile
+    )
+    val installIntent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "application/vnd.android.package-archive")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    context.startActivity(installIntent)
 }
