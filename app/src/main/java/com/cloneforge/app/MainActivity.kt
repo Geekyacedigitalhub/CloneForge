@@ -286,14 +286,19 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         Button(
             onClick = {
                 busy = true
-                status = "Building and signing clone…"
+                status = "Starting clone build…"
                 error = null
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
                         CloneService(context).buildInstalledAppClone(
                             sourcePackage = app.packageName,
                             cloneName = cloneName,
-                            packageSuffix = packageSuffix
+                            packageSuffix = packageSuffix,
+                            onProgress = { progress ->
+                                scope.launch {
+                                    status = progress
+                                }
+                            }
                         )
                     }
                     busy = false
