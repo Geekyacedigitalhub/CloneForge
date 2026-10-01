@@ -58,38 +58,43 @@ class CloneService(private val context: Context) {
 
         val cloneWorkspaceRoot = File(
             context.filesDir,
-            "clone-builds/${sanitize(plan.clonePackage)}"
+            "clone-builds/" + sanitize(plan.clonePackage)
         )
 
-        val unsigned = pipeline.buildUnsignedClone(
-            sourceApk = File(workspace, "source.apk"),
-            workspaceRoot = cloneWorkspaceRoot,
-            plan = plan
-        ).getOrThrow()
+        try {
+            val unsigned = pipeline.buildUnsignedClone(
+                sourceApk = File(workspace, "source.apk"),
+                workspaceRoot = cloneWorkspaceRoot,
+                plan = plan
+            ).getOrThrow()
 
-        val signedOutput = File(
-            unsigned.apkFile.parentFile,
-            sanitize(plan.cloneName) + ".apk"
-        )
+            val signedOutput = File(
+                unsigned.apkFile.parentFile,
+                sanitize(plan.cloneName) + ".apk"
+            )
 
-        signer.sign(unsigned.apkFile, signedOutput).getOrThrow()
+            signer.sign(unsigned.apkFile, signedOutput).getOrThrow()
 
-        library.add(
-            CloneRecord(
-                cloneName = plan.cloneName,
+            library.add(
+                CloneRecord(
+                    cloneName = plan.cloneName,
+                    sourcePackage = plan.sourcePackage,
+                    clonePackage = plan.clonePackage,
+                    apkPath = signedOutput.absolutePath,
+                    createdAt = System.currentTimeMillis()
+                )
+            )
+
+            CloneArtifact(
+                apkFile = signedOutput,
                 sourcePackage = plan.sourcePackage,
                 clonePackage = plan.clonePackage,
-                apkPath = signedOutput.absolutePath,
-                createdAt = System.currentTimeMillis()
+                cloneName = plan.cloneName
             )
-        )
-
-        CloneArtifact(
-            apkFile = signedOutput,
-            sourcePackage = plan.sourcePackage,
-            clonePackage = plan.clonePackage,
-            cloneName = plan.cloneName
-        )
+        } catch (error: Throwable) {
+            cloneWorkspaceRoot.deleteRecursively()
+            throw error
+        }
     }
 
     private fun nextAvailableCloneIndex(sourcePackage: String): Int {
