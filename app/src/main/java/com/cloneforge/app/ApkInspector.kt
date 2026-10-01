@@ -30,7 +30,7 @@ class ApkInspector {
                 when {
                     name == "AndroidManifest.xml" -> hasManifest = true
                     name == "resources.arsc" -> hasResources = true
-                    name.matches(Regex("classes([2-9][0-9]*)?\\\\.dex")) -> {
+                    name.matches(Regex("classes([2-9][0-9]*)?\\.dex")) -> {
                         hasDex = true
                         dexCount++
                     }
