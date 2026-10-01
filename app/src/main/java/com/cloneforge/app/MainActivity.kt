@@ -603,6 +603,7 @@ private fun CloneForgeApp(
                                                     }
                                                     result.onSuccess { report ->
                                                         integrityLabel = cloneLibrary.integrityLabel(record)
+                                                        library = cloneLibrary.list()
                                                         deleteFeedback = if (report.isHealthy) {
                                                             "Integrity verified for " + record.cloneName + "."
                                                         } else {
