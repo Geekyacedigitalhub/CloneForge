@@ -305,6 +305,9 @@ private fun CloneForgeApp(
                                         Text("Source: " + record.sourcePackage, style = MaterialTheme.typography.bodySmall)
                                         Text("APK: " + file.name, style = MaterialTheme.typography.bodySmall)
                                         Text("Size: " + formatFileSize(file.length()), style = MaterialTheme.typography.bodySmall)
+                                        if (record.sha256.isNotBlank()) {
+                                            Text("SHA-256: " + record.sha256.take(16) + "…", style = MaterialTheme.typography.bodySmall)
+                                        }
                                         Text(
                                             "Created: " + DateFormat.getDateTimeInstance(
                                                 DateFormat.MEDIUM,
@@ -709,6 +712,7 @@ Path: ${built.apkFile.absolutePath}"
                     Spacer(Modifier.height(8.dp))
                     Text("Package: ${built.clonePackage}", style = MaterialTheme.typography.bodyMedium)
                     Text("APK: ${built.apkFile.name}", style = MaterialTheme.typography.bodySmall)
+                    Text("SHA-256: ${sha256(built.apkFile)}", style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(14.dp))
                     Row(
                         Modifier.fillMaxWidth(),
