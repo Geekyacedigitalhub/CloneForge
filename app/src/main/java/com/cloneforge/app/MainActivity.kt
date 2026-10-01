@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -101,6 +103,28 @@ private fun CloneForgeApp(
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var deleteFeedback by remember { mutableStateOf<String?>(null) }
     var installedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var importBusy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        importBusy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { cloneLibrary.importApk(uri) }
+            }
+            importBusy = false
+            result.onSuccess { imported ->
+                refreshLibrary()
+                deleteFeedback = if (imported.replacedExisting) {
+                    "Updated imported clone " + imported.record.cloneName + " (" + imported.record.clonePackage + ")."
+                } else {
+                    "Imported " + imported.record.cloneName + " (" + imported.record.clonePackage + ") into the clone library."
+                }
+            }.onFailure { throwable ->
+                deleteFeedback = "Import failed: " + (throwable.message ?: "The selected file could not be imported.")
+            }
+        }
+    }
 
     fun refreshLibrary() {
         cloneLibrary.cleanupStaleRecords()
@@ -141,8 +165,25 @@ private fun CloneForgeApp(
     Scaffold(topBar = { TopAppBar(title = { Text("CloneForge") }) }) { padding ->
         if (selected == null) {
             Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-                Text("Installed Apps", style = MaterialTheme.typography.headlineSmall)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Installed Apps", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    TextButton(
+                        onClick = { importLauncher.launch(arrayOf("application/vnd.android.package-archive", "application/zip", "*/*")) },
+                        enabled = !importBusy
+                    ) {
+                        Text(if (importBusy) "Importing…" else "Import APK")
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
+                deleteFeedback?.let {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Text(it, Modifier.padding(14.dp))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
                 OutlinedTextField(
                     value = appQuery,
                     onValueChange = { appQuery = it },
@@ -215,17 +256,6 @@ private fun CloneForgeApp(
                                 record.clonePackage.lowercase().contains(query) ||
                                 record.sourcePackage.lowercase().contains(query)
                         )
-                    }
-                    deleteFeedback?.let {
-                        Card(
-                            Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer
-                            )
-                        ) {
-                            Text(it, Modifier.padding(14.dp))
-                        }
-                        Spacer(Modifier.height(8.dp))
                     }
                     if (filteredLibrary.isEmpty()) {
                         Card(Modifier.fillMaxWidth()) {
