@@ -17,6 +17,8 @@ object CloneCompatibilityChecker {
         if (!inspection.hasDex) issues += "No DEX bytecode was found."
         if (!inspection.hasResources) {
             warnings += "resources.arsc is missing. This may be resource-light, but resource-dependent apps can fail."
+        } else {
+            warnings += "resources.arsc is preserved without binary package rewriting. Apps with package-specific resource metadata may need additional handling."
         }
         if (inspection.nativeLibraryCount > 0) {
             warnings += "The APK contains ${inspection.nativeLibraryCount} native libraries. Native code may contain hardcoded package or signature checks."
