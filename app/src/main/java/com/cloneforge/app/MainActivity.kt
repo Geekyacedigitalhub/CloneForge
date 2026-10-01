@@ -871,12 +871,28 @@ private fun CloneDetailsScreen(
                     Text(
                         verificationText,
                         style = MaterialTheme.typography.labelLarge,
-                        color = if (result.verified) {
+                        color = if (integrityVerification?.isHealthy == true || (integrityVerification == null && result.verified)) {
                             MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.error
                         }
                     )
+                    integrityVerification?.issues?.firstOrNull()?.let { issue ->
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Reason: " + issue.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    integrityVerification?.let { report ->
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Signature: " + report.signaturesVerified + "/" + report.signaturesChecked + " verified",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Text(
                         buildString {
                             append("Manifest: ")
