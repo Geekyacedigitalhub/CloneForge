@@ -229,10 +229,7 @@ class CloneLibrary(private val context: Context) {
                             safeName == "cloneforge-backup.json" -> metadataFile
                             safeName.startsWith("apks/") &&
                                 safeName.substringAfter("apks/").matches(Regex("[0-9]+\\.apk")) -> {
-                                File(
-                                    restoreRoot,
-                                    safeName.substringAfter("apks/")
-                                )
+                                File(restoreRoot, safeName.substringAfter("apks/"))
                             }
                             else -> error("Backup contains an unsupported or unsafe entry.")
                         }
@@ -269,9 +266,18 @@ class CloneLibrary(private val context: Context) {
                 "Backup contains too many clones."
             }
 
-            val referencedEntries = mutableSetOf<String>()
-            var restored = 0
+            data class PreparedRestore(
+                val item: JSONObject,
+                val packageName: String,
+                val sourceApk: File,
+                val actualSha256: String
+            )
 
+            val prepared = mutableListOf<PreparedRestore>()
+            val referencedEntries = mutableSetOf<String>()
+            val packageNames = mutableSetOf<String>()
+
+            // Phase 1: validate the complete backup without modifying the library.
             for (i in 0 until clones.length()) {
                 val item = clones.getJSONObject(i)
                 val entryName = item.getString("apkEntry").replace('\\', '/')
@@ -301,18 +307,39 @@ class CloneLibrary(private val context: Context) {
                 require(packageName == declaredPackage) {
                     "Backup package mismatch for " + item.optString("cloneName", "clone") + "."
                 }
+                require(packageNames.add(packageName)) {
+                    "Backup contains duplicate clone packages."
+                }
 
+                val expectedSha256 = item.optString("sha256", "")
+                val actualSha256 = calculateSha256(sourceApk)
+                if (expectedSha256.isNotBlank()) {
+                    require(actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                        "SHA-256 mismatch for " + item.optString("cloneName", "clone") + "."
+                    }
+                }
+
+                prepared += PreparedRestore(
+                    item = item,
+                    packageName = packageName,
+                    sourceApk = sourceApk,
+                    actualSha256 = actualSha256
+                )
+            }
+
+            // Phase 2: only after every clone is valid, replace existing records.
+            for (restore in prepared) {
+                val item = restore.item
                 val destinationDir = File(
                     buildRoot,
-                    "imports/" + sanitize(packageName)
+                    "imports/" + sanitize(restore.packageName)
                 ).apply { mkdirs() }
                 val destination = File(
                     destinationDir,
                     sanitize(item.optString("cloneName", "Restored Clone")) + ".apk"
                 )
-                sourceApk.copyTo(destination, overwrite = true)
 
-                val existing = findByClonePackage(packageName)
+                val existing = findByClonePackage(restore.packageName)
                 existing?.let {
                     if (File(it.apkPath).absolutePath != destination.absolutePath) {
                         File(it.apkPath).delete()
@@ -320,28 +347,21 @@ class CloneLibrary(private val context: Context) {
                     File(buildRoot, sanitize(it.clonePackage)).deleteRecursively()
                 }
 
-                val actualSha256 = calculateSha256(destination)
-                val expectedSha256 = item.optString("sha256", "")
-                if (expectedSha256.isNotBlank()) {
-                    require(actualSha256.equals(expectedSha256, ignoreCase = true)) {
-                        "SHA-256 mismatch for " + item.optString("cloneName", "clone") + "."
-                    }
-                }
+                restore.sourceApk.copyTo(destination, overwrite = true)
 
                 add(
                     CloneRecord(
                         cloneName = item.optString("cloneName", "Restored Clone"),
                         sourcePackage = item.optString("sourcePackage", "Restored Backup"),
-                        clonePackage = packageName,
+                        clonePackage = restore.packageName,
                         apkPath = destination.absolutePath,
                         createdAt = item.optLong("createdAt", System.currentTimeMillis()),
-                        sha256 = actualSha256
+                        sha256 = restore.actualSha256
                     )
                 )
-                restored++
             }
 
-            return restored
+            return prepared.size
         } finally {
             restoreRoot.deleteRecursively()
         }
