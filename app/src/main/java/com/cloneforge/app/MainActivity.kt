@@ -466,6 +466,24 @@ private fun CloneForgeApp(
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
                             items(filteredLibrary) { record ->
                             val file = java.io.File(record.apkPath)
+                            var integrityLabel by remember(
+                                record.apkPath,
+                                record.sha256,
+                                file.length(),
+                                file.lastModified()
+                            ) {
+                                mutableStateOf(cloneLibrary.integrityLabel(record))
+                            }
+                            LaunchedEffect(
+                                record.apkPath,
+                                record.sha256,
+                                file.length(),
+                                file.lastModified()
+                            ) {
+                                integrityLabel = withContext(Dispatchers.IO) {
+                                    cloneLibrary.verifyIntegrityLabel(record)
+                                }
+                            }
                             val sourceIcon = remember(record.sourcePackage) {
                                 loadApplicationIcon(context, record.sourcePackage)
                             }
@@ -485,7 +503,7 @@ private fun CloneForgeApp(
                                         Text("Source: " + record.sourcePackage, style = MaterialTheme.typography.bodySmall)
                                         Text("APK: " + file.name, style = MaterialTheme.typography.bodySmall)
                                         Text("Size: " + formatFileSize(file.length()), style = MaterialTheme.typography.bodySmall)
-                                        Text(cloneLibrary.integrityLabel(record), style = MaterialTheme.typography.bodySmall)
+                                        Text(integrityLabel, style = MaterialTheme.typography.bodySmall)
                                         if (record.sha256.isNotBlank()) {
                                             Text("SHA-256: " + record.sha256.take(16) + "…", style = MaterialTheme.typography.bodySmall)
                                         }
