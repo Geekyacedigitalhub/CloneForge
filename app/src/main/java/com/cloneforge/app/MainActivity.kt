@@ -114,7 +114,11 @@ private fun CloneForgeApp(
             }
             importBusy = false
             result.onSuccess { imported ->
-                refreshLibrary()
+                cloneLibrary.cleanupStaleRecords()
+                library = cloneLibrary.list()
+                installedPackages = library.mapNotNull { record ->
+                    if (isPackageInstalled(context, record.clonePackage)) record.clonePackage else null
+                }.toSet()
                 deleteFeedback = if (imported.replacedExisting) {
                     "Updated imported clone " + imported.record.cloneName + " (" + imported.record.clonePackage + ")."
                 } else {
