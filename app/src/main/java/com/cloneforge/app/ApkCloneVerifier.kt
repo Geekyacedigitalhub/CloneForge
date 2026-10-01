@@ -6,6 +6,9 @@ import java.util.zip.ZipFile
 data class ApkCloneVerification(
     val manifestPackage: String?,
     val expectedClonePackage: String,
+    val hasManifest: Boolean,
+    val hasDex: Boolean,
+    val hasResources: Boolean,
     val dexFilesChecked: Int,
     val sourceDescriptorOccurrences: Int,
     val cloneDescriptorOccurrences: Int,
@@ -46,13 +49,18 @@ class ApkCloneVerifier(
                 }
         }
 
-        val verified = manifestPackage == clonePackage &&
+        val verified = hasManifest &&
+            hasDex &&
+            manifestPackage == clonePackage &&
             sourceOccurrences == 0 &&
-            (dexFilesChecked == 0 || cloneOccurrences > 0)
+            cloneOccurrences > 0
 
         return ApkCloneVerification(
             manifestPackage = manifestPackage,
             expectedClonePackage = clonePackage,
+            hasManifest = hasManifest,
+            hasDex = hasDex,
+            hasResources = hasResources,
             dexFilesChecked = dexFilesChecked,
             sourceDescriptorOccurrences = sourceOccurrences,
             cloneDescriptorOccurrences = cloneOccurrences,
