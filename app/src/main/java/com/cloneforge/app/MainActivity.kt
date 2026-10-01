@@ -145,7 +145,6 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                         CloneService(context).buildInstalledAppClone(
                             sourcePackage = app.packageName,
                             cloneName = cloneName,
-                            cloneIndex = 1,
                             packageSuffix = packageSuffix
                         )
                     }
@@ -187,7 +186,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
 
         Spacer(Modifier.height(12.dp))
         Text(
-            "The APK is now rebuilt and signed with CloneForge’s on-device signing key. Installation is the next UI step.",
+            "The APK was rebuilt and signed with CloneForge’s on-device signing key.",
             style = MaterialTheme.typography.bodySmall
         )
     }
