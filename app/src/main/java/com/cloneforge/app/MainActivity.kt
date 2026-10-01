@@ -122,10 +122,12 @@ private fun CloneForgeApp(
                             else -> true
                         }
                         val query = libraryQuery.trim().lowercase()
-                        query.isBlank() ||
-                            record.cloneName.lowercase().contains(query) ||
-                            record.clonePackage.lowercase().contains(query) ||
-                            record.sourcePackage.lowercase().contains(query)
+                        matchesFilter && (
+                            query.isBlank() ||
+                                record.cloneName.lowercase().contains(query) ||
+                                record.clonePackage.lowercase().contains(query) ||
+                                record.sourcePackage.lowercase().contains(query)
+                        )
                     }
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
                         items(filteredLibrary) { record ->
