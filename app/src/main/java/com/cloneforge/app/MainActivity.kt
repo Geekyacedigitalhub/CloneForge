@@ -81,7 +81,11 @@ private fun CloneForgeApp(apps: List<InstalledApp>) {
                                             }
                                         )
                                     }
-                                    TextButton(onClick = { openCloneInstaller(context, file) }) { Text("Install") }
+                                    TextButton(onClick = { openCloneInstaller(context, file) }) {
+                                        Text(
+                                            if (isPackageInstalled(context, record.clonePackage)) "Update" else "Install"
+                                        )
+                                    }
                                     TextButton(onClick = {
                                         cloneLibrary.delete(record)
                                         library = cloneLibrary.list()
