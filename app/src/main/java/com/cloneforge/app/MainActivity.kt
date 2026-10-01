@@ -137,6 +137,7 @@ private fun CloneForgeApp(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         backupBusy = true
+        deleteFeedback = "Creating backup…"
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching { cloneLibrary.exportBackup(uri) }
@@ -154,6 +155,7 @@ private fun CloneForgeApp(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         backupBusy = true
+        deleteFeedback = "Validating and restoring backup…"
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching { cloneLibrary.restoreBackup(uri) }
@@ -209,7 +211,22 @@ private fun CloneForgeApp(
     }
 
     Scaffold(topBar = { TopAppBar(title = { Text("CloneForge") }) }) { padding ->
-        if (showRestoreDialog) {
+        if (backupBusy) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Working…") },
+            text = {
+                Text(
+                    deleteFeedback.ifBlank {
+                        "CloneForge is processing your backup. Please keep the app open."
+                    }
+                )
+            },
+            confirmButton = {}
+        )
+    }
+
+    if (showRestoreDialog) {
         AlertDialog(
             onDismissRequest = { if (!backupBusy) showRestoreDialog = false },
             title = { Text("Restore CloneForge backup?") },
