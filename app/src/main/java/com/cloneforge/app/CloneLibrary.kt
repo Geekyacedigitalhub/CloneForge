@@ -15,6 +15,7 @@ data class CloneRecord(
 
 class CloneLibrary(private val context: Context) {
     private val metadataFile get() = File(context.filesDir, "clone-library.json")
+    private val buildRoot get() = File(context.filesDir, "clone-builds")
 
     fun list(): List<CloneRecord> = runCatching {
         if (!metadataFile.exists()) return emptyList()
@@ -49,13 +50,40 @@ class CloneLibrary(private val context: Context) {
     }
 
     fun delete(record: CloneRecord): Boolean {
-        val deleted = File(record.apkPath).delete()
+        val apkFile = File(record.apkPath)
+        val deleted = !apkFile.exists() || apkFile.delete()
+
+        val workspace = File(buildRoot, sanitize(record.clonePackage))
+        workspace.deleteRecursively()
+
         val remaining = list().filterNot {
             it.apkPath == record.apkPath || it.clonePackage == record.clonePackage
         }
         writeRecords(remaining)
         return deleted
     }
+
+    fun cleanupStaleRecords() {
+        if (!metadataFile.exists()) return
+
+        val validRecords = list()
+        val validPackages = validRecords.mapTo(mutableSetOf()) { it.clonePackage }
+
+        val array = JSONArray(metadataFile.readText())
+        for (i in 0 until array.length()) {
+            val item = array.getJSONObject(i)
+            val clonePackage = item.optString("clonePackage")
+            if (clonePackage.isNotBlank() && clonePackage !in validPackages) {
+                File(item.optString("apkPath")).delete()
+                File(buildRoot, sanitize(clonePackage)).deleteRecursively()
+            }
+        }
+
+        writeRecords(validRecords)
+    }
+
+    private fun sanitize(value: String): String =
+        value.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "app" }
 
     private fun writeRecords(records: List<CloneRecord>) {
         val array = JSONArray()
