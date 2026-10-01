@@ -76,6 +76,7 @@ private fun CloneForgeApp(
     var selected by remember { mutableStateOf<InstalledApp?>(null) }
     val cloneLibrary = remember { CloneLibrary(context) }
     var library by remember { mutableStateOf(cloneLibrary.list()) }
+    var libraryQuery by remember { mutableStateOf("") }
 
     fun refreshLibrary() {
         cloneLibrary.cleanupStaleRecords()
@@ -93,8 +94,24 @@ private fun CloneForgeApp(
                     Spacer(Modifier.height(20.dp))
                     Text("Clone Library", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = libraryQuery,
+                        onValueChange = { libraryQuery = it },
+                        label = { Text("Search clones") },
+                        placeholder = { Text("Name, package, or source") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    val filteredLibrary = library.filter { record ->
+                        val query = libraryQuery.trim().lowercase()
+                        query.isBlank() ||
+                            record.cloneName.lowercase().contains(query) ||
+                            record.clonePackage.lowercase().contains(query) ||
+                            record.sourcePackage.lowercase().contains(query)
+                    }
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-                        items(library) { record ->
+                        items(filteredLibrary) { record ->
                             val file = java.io.File(record.apkPath)
                             Card(Modifier.fillMaxWidth()) {
                                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
