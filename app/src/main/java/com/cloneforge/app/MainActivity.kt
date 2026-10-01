@@ -402,7 +402,12 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         }
     }
 
-    Column(modifier.fillMaxSize().padding(24.dp)) {
+    Column(
+        modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
         TextButton(onClick = onBack, enabled = !busy) { Text("← Back") }
         Spacer(Modifier.height(8.dp))
         Text("Clone Setup", style = MaterialTheme.typography.headlineMedium)
