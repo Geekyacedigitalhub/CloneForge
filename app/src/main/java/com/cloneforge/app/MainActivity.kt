@@ -125,11 +125,18 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var cloneName by remember { mutableStateOf("${app.label} Clone") }
-    var packageSuffix by remember { mutableStateOf("clone1") }
+    var packageSuffix by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var artifact by remember { mutableStateOf<CloneArtifact?>(null) }
+
+    LaunchedEffect(app.packageName) {
+        val nextIndex = withContext(Dispatchers.IO) {
+            CloneService(context).nextAvailableCloneIndexForUi(app.packageName)
+        }
+        packageSuffix = "clone$nextIndex"
+    }
 
     Column(modifier.fillMaxSize().padding(24.dp)) {
         TextButton(onClick = onBack, enabled = !busy) { Text("← Back") }
