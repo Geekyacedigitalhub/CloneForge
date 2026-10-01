@@ -9,10 +9,21 @@ import org.jf.dexlib2.rewriter.Rewriters
 import org.jf.dexlib2.rewriter.TypeRewriter
 import java.io.File
 
-data class DexRewriteResult(val changed: Boolean, val replacements: Int, val outputFile: File)
+data class DexRewriteResult(
+    val changed: Boolean,
+    val replacements: Int,
+    val verification: DexDescriptorVerification,
+    val outputFile: File
+)
 
-class DexPackageRewriter {
-    fun rewrite(dexFile: File, sourcePackage: String, clonePackage: String): Result<DexRewriteResult> = runCatching {
+class DexPackageRewriter(
+    private val verifier: DexDescriptorVerifier = DexDescriptorVerifier()
+) {
+    fun rewrite(
+        dexFile: File,
+        sourcePackage: String,
+        clonePackage: String
+    ): Result<DexRewriteResult> = runCatching {
         require(dexFile.exists() && dexFile.isFile) { "DEX file does not exist." }
         require(sourcePackage.isNotBlank()) { "Source package is empty." }
         require(clonePackage.isNotBlank()) { "Clone package is empty." }
@@ -41,8 +52,25 @@ class DexPackageRewriter {
         })
 
         val rewritten = rewriter.rewriteDexFile(original)
-        if (replacements > 0) DexFileFactory.writeDexFile(dexFile.absolutePath, rewritten)
+        if (replacements > 0) {
+            DexFileFactory.writeDexFile(dexFile.absolutePath, rewritten)
+        }
 
-        DexRewriteResult(replacements > 0, replacements, dexFile)
+        val verification = verifier.verify(dexFile, sourcePackage, clonePackage)
+        if (replacements > 0 && !verification.verified) {
+            error(
+                "DEX rewrite verification failed: original descriptor occurrences=" +
+                    verification.sourceOccurrences +
+                    ", clone descriptor occurrences=" +
+                    verification.cloneOccurrences
+            )
+        }
+
+        DexRewriteResult(
+            changed = replacements > 0,
+            replacements = replacements,
+            verification = verification,
+            outputFile = dexFile
+        )
     }
 }
