@@ -43,7 +43,7 @@ class CloneLibrary(private val context: Context) {
 
     private val metadataFile get() = File(context.filesDir, "clone-library.json")
     private val buildRoot get() = File(context.filesDir, "clone-builds")
-    private val integrityCache = mutableMapOf<String, Pair<Long, String>>()
+    private val integrityCache = mutableMapOf<String, Triple<Long, Long, String>>();
 
     fun integrityLabel(record: CloneRecord): String {
         val file = File(record.apkPath)
