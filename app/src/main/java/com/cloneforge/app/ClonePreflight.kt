@@ -5,16 +5,19 @@ import java.util.zip.ZipFile
 
 data class ClonePreflight(
     val inspection: ApkInspection,
-    val compatibility: CloneCompatibility
+    val compatibility: CloneCompatibility,
+    val referenceScan: ApkReferenceScan
 )
 
 class ClonePreflightService(private val inspector: ApkInspector = ApkInspector()) {
-    fun inspect(sourceApk: File): Result<ClonePreflight> = runCatching {
+    fun inspect(sourceApk: File, sourcePackage: String): Result<ClonePreflight> = runCatching {
         val inspection = inspector.inspect(sourceApk)
+        val referenceScan = referenceScanner.scan(sourceApk, sourcePackage)
         val split = hasSplitConfiguration(sourceApk)
         ClonePreflight(
             inspection,
-            CloneCompatibilityChecker.check(inspection, split)
+            CloneCompatibilityChecker.check(inspection, split, referenceScan.totalReferences),
+            referenceScan
         )
     }
 
