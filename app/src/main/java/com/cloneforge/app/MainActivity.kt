@@ -20,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import java.text.DateFormat
+import java.util.Date
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -99,6 +101,15 @@ private fun CloneForgeApp(
                                     Column(Modifier.weight(1f)) {
                                         Text(record.cloneName, style = MaterialTheme.typography.titleMedium)
                                         Text(record.clonePackage, style = MaterialTheme.typography.bodySmall)
+                                        Text("Source: " + record.sourcePackage, style = MaterialTheme.typography.bodySmall)
+                                        Text("APK: " + file.name, style = MaterialTheme.typography.bodySmall)
+                                        Text(
+                                            "Created: " + DateFormat.getDateTimeInstance(
+                                                DateFormat.MEDIUM,
+                                                DateFormat.SHORT
+                                            ).format(Date(record.createdAt)),
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
                                         Spacer(Modifier.height(4.dp))
                                         Text(
                                             if (isPackageInstalled(context, record.clonePackage)) "Installed" else "APK ready",
