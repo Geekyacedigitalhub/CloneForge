@@ -14,7 +14,7 @@ data class ApkFileVerification(
 )
 
 class ApkFileVerifier(
-    private val manifestReader: BinaryManifestReader = BinaryManifestReader()
+    private val manifestReader: (ByteArray) -> BinaryManifestInfo = { BinaryManifestReader().read(it) }
 ) {
     fun verify(apkFile: File): ApkFileVerification {
         if (!apkFile.exists() || !apkFile.isFile) {
@@ -34,7 +34,7 @@ class ApkFileVerifier(
                 val manifestEntry = zip.getEntry("AndroidManifest.xml")
                 val hasManifest = manifestEntry != null
                 val manifestPackage = manifestEntry?.let {
-                    manifestReader.read(
+                    manifestReader(
                         zip.getInputStream(it).use { input -> input.readBytes() }
                     ).packageName
                 }
