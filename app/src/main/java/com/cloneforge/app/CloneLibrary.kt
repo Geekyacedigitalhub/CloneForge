@@ -63,6 +63,17 @@ class CloneLibrary(private val context: Context) {
         return deleted
     }
 
+    fun cleanupOrphanedBuildWorkspaces() {
+        if (!buildRoot.exists()) return
+
+        val referencedPackages = list()
+            .mapTo(mutableSetOf()) { sanitize(it.clonePackage) }
+
+        buildRoot.listFiles()
+            ?.filter { it.isDirectory && it.name !in referencedPackages }
+            ?.forEach { it.deleteRecursively() }
+    }
+
     fun cleanupStaleRecords() {
         if (!metadataFile.exists()) return
 
