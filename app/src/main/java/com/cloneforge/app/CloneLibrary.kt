@@ -209,6 +209,81 @@ class CloneLibrary(private val context: Context) {
         )
     }
 
+    fun checkIntegrity(record: CloneRecord): CloneIntegrityReport {
+        val file = File(record.apkPath)
+        if (!file.exists() || !file.isFile) {
+            integrityCache.remove(record.apkPath)
+            integrityDetails.remove(record.apkPath)
+            return CloneIntegrityReport(
+                checked = 1,
+                healthy = 0,
+                issues = listOf(CloneIntegrityIssue(record.clonePackage, record.cloneName, "APK file is missing."))
+            )
+        }
+
+        val verification = ApkFileVerifier().verify(file)
+        if (!verification.verified) {
+            val message = verification.error ?: "APK structure could not be verified."
+            cacheIntegrityLabel(record, file, "Integrity: Verification failed", message)
+            return CloneIntegrityReport(
+                checked = 1,
+                healthy = 0,
+                issues = listOf(CloneIntegrityIssue(record.clonePackage, record.cloneName, message))
+            )
+        }
+
+        val signatureVerification = ApkSignatureVerifier().verify(file)
+        if (!signatureVerification.verified) {
+            val message = signatureVerification.error ?: "APK cryptographic signature could not be verified."
+            cacheIntegrityLabel(record, file, "Integrity: Verification failed", message)
+            return CloneIntegrityReport(
+                checked = 1,
+                healthy = 0,
+                issues = listOf(CloneIntegrityIssue(record.clonePackage, record.cloneName, message),),
+                signaturesChecked = 1,
+                signaturesVerified = 0
+            )
+        }
+
+        if (verification.manifestPackage != record.clonePackage) {
+            val message = "Manifest package is " + (verification.manifestPackage ?: "unknown") + "."
+            cacheIntegrityLabel(record, file, "Integrity: Verification failed", message)
+            return CloneIntegrityReport(
+                checked = 1,
+                healthy = 0,
+                issues = listOf(CloneIntegrityIssue(record.clonePackage, record.cloneName, message)),
+                signaturesChecked = 1,
+                signaturesVerified = 1
+            )
+        }
+
+        if (record.sha256.isNotBlank()) {
+            val actual = calculateSha256(file)
+            if (!actual.equals(record.sha256, ignoreCase = true)) {
+                val message = "SHA-256 checksum does not match the library record."
+                cacheIntegrityLabel(record, file, "Integrity: Checksum mismatch", message)
+                return CloneIntegrityReport(
+                    checked = 1,
+                    healthy = 0,
+                    issues = listOf(CloneIntegrityIssue(record.clonePackage, record.cloneName, message)),
+                    signaturesChecked = 1,
+                    signaturesVerified = 1
+                )
+            }
+            cacheIntegrityLabel(record, file, "Integrity: Verified")
+        } else {
+            cacheIntegrityLabel(record, file, "Integrity: Not checked")
+        }
+
+        return CloneIntegrityReport(
+            checked = 1,
+            healthy = 1,
+            issues = emptyList(),
+            signaturesChecked = 1,
+            signaturesVerified = 1
+        )
+    }
+
     fun findByClonePackage(clonePackage: String): CloneRecord? =
         list().firstOrNull { it.clonePackage == clonePackage }
 
