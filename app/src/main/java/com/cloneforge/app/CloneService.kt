@@ -15,6 +15,7 @@ class CloneService(private val context: Context) {
     private val engine = CloneEngine(context)
     private val pipeline = ApkClonePipeline()
     private val signer = ApkSignerService(context)
+    private val preflight = ClonePreflightService()
 
     fun buildInstalledAppClone(
         sourcePackage: String,
@@ -25,6 +26,11 @@ class CloneService(private val context: Context) {
         val applicationInfo = context.packageManager.getApplicationInfo(sourcePackage, 0)
         val source = engine.inspect(applicationInfo)
             ?: error("Unable to inspect the selected installed app.")
+        val preflightResult = preflight.inspect(source.sourceApk).getOrThrow()
+        require(preflightResult.compatibility.supported) {
+            preflightResult.compatibility.issues.joinToString(" ")
+        }
+
         val workspace = engine.prepareWorkspace(source)
         engine.copySourceApk(source, workspace)
 
