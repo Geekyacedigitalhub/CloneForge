@@ -28,6 +28,7 @@ data class InstalledApp(val label: String, val packageName: String, val versionN
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CloneLibrary(this).cleanupStaleRecords()
         val apps = loadLaunchableApps()
         setContent { MaterialTheme { CloneForgeApp(apps) } }
     }
