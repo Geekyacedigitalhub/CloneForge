@@ -77,6 +77,7 @@ private fun CloneForgeApp(
     val cloneLibrary = remember { CloneLibrary(context) }
     var library by remember { mutableStateOf(cloneLibrary.list()) }
     var libraryQuery by remember { mutableStateOf("") }
+    var libraryFilter by remember { mutableStateOf("All") }
 
     fun refreshLibrary() {
         cloneLibrary.cleanupStaleRecords()
@@ -103,7 +104,23 @@ private fun CloneForgeApp(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("All", "Installed", "APK Ready").forEach { filter ->
+                            FilterChip(
+                                selected = libraryFilter == filter,
+                                onClick = { libraryFilter = filter },
+                                label = { Text(filter) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                     val filteredLibrary = library.filter { record ->
+                        val installed = isPackageInstalled(context, record.clonePackage)
+                        val matchesFilter = when (libraryFilter) {
+                            "Installed" -> installed
+                            "APK Ready" -> !installed
+                            else -> true
+                        }
                         val query = libraryQuery.trim().lowercase()
                         query.isBlank() ||
                             record.cloneName.lowercase().contains(query) ||
