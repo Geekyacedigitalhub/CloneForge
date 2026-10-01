@@ -591,6 +591,36 @@ private fun CloneForgeApp(
                                         if (record.sha256.isNotBlank()) {
                                             Text("SHA-256: " + record.sha256.take(16) + "…", style = MaterialTheme.typography.bodySmall)
                                         }
+                                        var rechecking by remember(record.apkPath, record.sha256) {
+                                            mutableStateOf(false)
+                                        }
+                                        TextButton(
+                                            onClick = {
+                                                rechecking = true
+                                                scope.launch {
+                                                    val result = withContext(Dispatchers.IO) {
+                                                        runCatching { cloneLibrary.checkIntegrity(record) }
+                                                    }
+                                                    result.onSuccess { report ->
+                                                        integrityLabel = cloneLibrary.integrityLabel(record)
+                                                        deleteFeedback = if (report.isHealthy) {
+                                                            "Integrity verified for " + record.cloneName + "."
+                                                        } else {
+                                                            "Integrity issue for " + record.cloneName + ": " +
+                                                                (report.issues.firstOrNull()?.message ?: "Verification failed.")
+                                                        }
+                                                    }.onFailure { throwable ->
+                                                        deleteFeedback = "Integrity recheck failed: " +
+                                                            (throwable.message ?: "Unable to verify the clone.")
+                                                    }
+                                                    rechecking = false
+                                                }
+                                            },
+                                            enabled = !rechecking && !backupBusy && !importBusy,
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                        ) {
+                                            Text(if (rechecking) "Checking…" else "Recheck integrity")
+                                        }
                                         Text(
                                             "Created: " + DateFormat.getDateTimeInstance(
                                                 DateFormat.MEDIUM,
