@@ -127,6 +127,7 @@ private fun CloneForgeApp(
                     Spacer(Modifier.height(20.dp))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Clone Library", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { refreshLibrary() }) { Text("Refresh") }
                         TextButton(onClick = { showDeleteAllDialog = true }) { Text("Delete all") }
                     }
                     Spacer(Modifier.height(8.dp))
