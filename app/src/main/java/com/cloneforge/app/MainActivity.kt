@@ -294,6 +294,7 @@ private fun CloneForgeApp(
                                             if (record.clonePackage in installedPackages) "Update" else "Install"
                                         )
                                     }
+                                    TextButton(onClick = { shareCloneApk(context, file) }) { Text("Share") }
                                     TextButton(onClick = {
                                         cloneLibrary.delete(record)
                                         library = cloneLibrary.list()
