@@ -106,7 +106,8 @@ private fun CloneForgeApp(
     var deleteFeedback by remember { mutableStateOf<String?>(null) }
     var installedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var importBusy by remember { mutableStateOf(false) }
-    var backupBusy by remember { mutableStateOf(false) }\n    var showRestoreDialog by remember { mutableStateOf(false) }
+    var backupBusy by remember { mutableStateOf(false) }
+    var showRestoreDialog by remember { mutableStateOf(false) }
     var integrityBusy by remember { mutableStateOf(false) }
     var integrityReport by remember { mutableStateOf<CloneIntegrityReport?>(null) }
     val scope = rememberCoroutineScope()
