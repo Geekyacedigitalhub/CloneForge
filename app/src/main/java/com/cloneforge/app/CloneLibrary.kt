@@ -85,7 +85,17 @@ class CloneLibrary(private val context: Context) {
         return label
     }
 
-    fun integrityDetail(record: CloneRecord): String? = integrityDetails[record.apkPath]
+    fun integrityDetail(record: CloneRecord): String? {
+        val file = File(record.apkPath)
+        if (!file.exists() || !file.isFile) return null
+        if (record.sha256.isBlank()) return null
+
+        val fingerprint = Pair(file.length(), file.lastModified())
+        val cached = integrityCache[record.apkPath]
+        if (cached?.first != fingerprint.first || cached.second != fingerprint.second) return null
+
+        return integrityDetails[record.apkPath]
+    }
 
     fun invalidateIntegrityCache() {
         integrityCache.clear()
@@ -126,6 +136,8 @@ class CloneLibrary(private val context: Context) {
         records.forEach { record ->
             val file = File(record.apkPath)
             if (!file.exists() || !file.isFile) {
+                integrityCache.remove(record.apkPath)
+                integrityDetails.remove(record.apkPath)
                 issues += CloneIntegrityIssue(
                     record.clonePackage,
                     record.cloneName,
