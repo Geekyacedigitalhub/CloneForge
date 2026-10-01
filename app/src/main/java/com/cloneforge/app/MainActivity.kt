@@ -13,7 +13,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class InstalledApp(val label: String, val packageName: String, val versionName: String)
 
@@ -72,20 +76,82 @@ private fun CloneForgeApp(apps: List<InstalledApp>) {
 
 @Composable
 private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var cloneName by remember { mutableStateOf("${app.label} Clone") }
-    var packageSuffix by remember { mutableStateOf(".clone1") }
+    var packageSuffix by remember { mutableStateOf("clone1") }
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
     Column(modifier.fillMaxSize().padding(24.dp)) {
-        TextButton(onClick = onBack) { Text("← Back") }
+        TextButton(onClick = onBack, enabled = !busy) { Text("← Back") }
         Spacer(Modifier.height(8.dp))
         Text("Clone Setup", style = MaterialTheme.typography.headlineMedium)
         Text("${app.label} • ${app.packageName}")
         Spacer(Modifier.height(24.dp))
-        OutlinedTextField(cloneName, { cloneName = it }, label = { Text("Clone name") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value = cloneName,
+            onValueChange = { cloneName = it; error = null },
+            label = { Text("Clone name") },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !busy
+        )
         Spacer(Modifier.height(12.dp))
-        OutlinedTextField(packageSuffix, { packageSuffix = it }, label = { Text("Package suffix") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value = packageSuffix,
+            onValueChange = { packageSuffix = it; error = null },
+            label = { Text("Package suffix") },
+            supportingText = { Text("Example: clone1 → ${app.packageName}.clone1") },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !busy
+        )
         Spacer(Modifier.height(20.dp))
-        Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Prepare Clone") }
+        Button(
+            onClick = {
+                busy = true
+                status = "Building unsigned clone…"
+                error = null
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        CloneService(context).buildInstalledAppClone(
+                            sourcePackage = app.packageName,
+                            cloneName = cloneName,
+                            cloneIndex = 1,
+                            packageSuffix = packageSuffix
+                        )
+                    }
+                    busy = false
+                    result.onSuccess { artifact ->
+                        status = "Unsigned APK created: ${artifact.apkFile.name}\nPackage: ${artifact.clonePackage}\nPath: ${artifact.apkFile.absolutePath}"
+                    }.onFailure { throwable ->
+                        status = null
+                        error = throwable.message ?: "Clone build failed."
+                    }
+                }
+            },
+            enabled = !busy && cloneName.isNotBlank() && packageSuffix.isNotBlank(),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (busy) "Building…" else "Build Unsigned Clone")
+        }
+
+        status?.let {
+            Spacer(Modifier.height(16.dp))
+            Card(Modifier.fillMaxWidth()) {
+                Text(it, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+        error?.let {
+            Spacer(Modifier.height(16.dp))
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        }
+
         Spacer(Modifier.height(12.dp))
-        Text("Foundation stage: app discovery and clone configuration. APK transformation is the next engine stage.", style = MaterialTheme.typography.bodySmall)
+        Text(
+            "This stage rebuilds the APK without a signing certificate. The next engine stage is APK signing before installation.",
+            style = MaterialTheme.typography.bodySmall
+        )
     }
 }
