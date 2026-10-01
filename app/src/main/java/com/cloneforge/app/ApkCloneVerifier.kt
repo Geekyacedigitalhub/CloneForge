@@ -26,18 +26,29 @@ class ApkCloneVerifier(
         require(apkFile.exists() && apkFile.isFile) { "APK file does not exist." }
 
         var manifestPackage: String? = null
+        var hasManifest = false
+        var hasDex = false
+        var hasResources = false
         var dexFilesChecked = 0
         var sourceOccurrences = 0
         var cloneOccurrences = 0
 
         ZipFile(apkFile).use { zip ->
-            val manifest = zip.getEntry("AndroidManifest.xml")
-                ?: error("Cloned APK is missing AndroidManifest.xml.")
-            manifestPackage = manifestReader.read(zip.getInputStream(manifest).use { it.readBytes() }).packageName
+            hasManifest = zip.getEntry("AndroidManifest.xml") != null
+            hasResources = zip.getEntry("resources.arsc") != null
+
+            if (hasManifest) {
+                val manifest = zip.getEntry("AndroidManifest.xml")
+                    ?: error("Cloned APK is missing AndroidManifest.xml.")
+                manifestPackage = manifestReader.read(
+                    zip.getInputStream(manifest).use { it.readBytes() }
+                ).packageName
+            }
 
             zip.entries().asSequence()
                 .filter { it.name.matches(Regex("classes([2-9][0-9]*)?\\.dex")) }
                 .forEach { entry ->
+                    hasDex = true
                     dexFilesChecked++
                     val verification = DexDescriptorVerifier().verifyBytes(
                         zip.getInputStream(entry).use { it.readBytes() },
