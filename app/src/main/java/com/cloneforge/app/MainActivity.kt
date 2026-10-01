@@ -335,11 +335,29 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         }
 
         artifact?.let { built ->
-            Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = { openCloneInstaller(context, built.apkFile) },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Install Clone") }
+            Spacer(Modifier.height(16.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Clone ready", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(6.dp))
+                    Text(built.cloneName, style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Package: ${built.clonePackage}", style = MaterialTheme.typography.bodyMedium)
+                    Text("APK: ${built.apkFile.name}", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(14.dp))
+                    Button(
+                        onClick = { openCloneInstaller(context, built.apkFile) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Install Clone")
+                    }
+                }
+            }
         }
 
         if (busy || progress > 0f) {
