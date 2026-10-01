@@ -60,7 +60,7 @@ class CloneLibrary(private val context: Context) {
             ?: error("Unable to open the selected APK.")
 
         val importRoot = File(buildRoot, "imports").apply { mkdirs() }
-        val tempFile = File(importRoot, "incoming-\${System.currentTimeMillis()}.apk")
+        val tempFile = File(importRoot, "incoming-" + System.currentTimeMillis() + ".apk")
 
         input.use { source ->
             tempFile.outputStream().use { target ->
@@ -92,7 +92,7 @@ class CloneLibrary(private val context: Context) {
         val destinationDir = File(importRoot, sanitize(clonePackage)).apply {
             mkdirs()
         }
-        val destination = File(destinationDir, "\${sanitize(originalName)}.apk")
+        val destination = File(destinationDir, sanitize(originalName) + ".apk")
         tempFile.copyTo(destination, overwrite = true)
         tempFile.delete()
 
