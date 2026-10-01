@@ -675,11 +675,22 @@ Path: ${built.apkFile.absolutePath}"
                     Text("Package: ${built.clonePackage}", style = MaterialTheme.typography.bodyMedium)
                     Text("APK: ${built.apkFile.name}", style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(14.dp))
-                    Button(
-                        onClick = { openCloneInstaller(context, built.apkFile) },
-                        modifier = Modifier.fillMaxWidth()
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Install Clone")
+                        Button(
+                            onClick = { openCloneInstaller(context, built.apkFile) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Install")
+                        }
+                        OutlinedButton(
+                            onClick = { shareCloneApk(context, built.apkFile) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Share APK")
+                        }
                     }
                 }
             }
@@ -751,6 +762,20 @@ private fun isPackageInstalled(context: android.content.Context, packageName: St
         context.packageManager.getApplicationInfo(packageName, 0)
         true
     }.getOrDefault(false)
+
+private fun shareCloneApk(context: android.content.Context, apkFile: java.io.File) {
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        apkFile
+    )
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "application/vnd.android.package-archive"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(shareIntent, "Share Clone APK"))
+}
 
 private fun openCloneInstaller(context: android.content.Context, apkFile: java.io.File) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
