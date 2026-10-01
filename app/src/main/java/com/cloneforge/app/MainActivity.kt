@@ -124,6 +124,19 @@ private fun CloneForgeApp(
         if (selected == null) {
             Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                 Text("Installed Apps", style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = appQuery,
+                    onValueChange = { appQuery = it },
+                    label = { Text("Search installed apps") },
+                    placeholder = { Text("App name or package") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                val filteredApps = apps.filter { app ->
+                    val query = appQuery.trim().lowercase()
+                    query.isBlank() || app.label.lowercase().contains(query) || app.packageName.lowercase().contains(query)
+                }
                 if (library.isNotEmpty()) {
                     Spacer(Modifier.height(20.dp))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -267,7 +280,7 @@ private fun CloneForgeApp(
                 Text("Select an app to prepare it for cloning.")
                 Spacer(Modifier.height(16.dp))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-                    items(apps) { app ->
+                    items(filteredApps) { app ->
                         Card(Modifier.fillMaxWidth().clickable { selected = app }) {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
