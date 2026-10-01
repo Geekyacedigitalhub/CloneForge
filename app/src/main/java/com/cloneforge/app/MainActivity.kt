@@ -70,6 +70,16 @@ private fun CloneForgeApp(apps: List<InstalledApp>) {
                                     Column(Modifier.weight(1f)) {
                                         Text(record.cloneName, style = MaterialTheme.typography.titleMedium)
                                         Text(record.clonePackage, style = MaterialTheme.typography.bodySmall)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            if (isPackageInstalled(context, record.clonePackage)) "Installed" else "APK ready",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (isPackageInstalled(context, record.clonePackage)) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            }
+                                        )
                                     }
                                     TextButton(onClick = { openCloneInstaller(context, file) }) { Text("Install") }
                                     TextButton(onClick = {
@@ -196,6 +206,12 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         )
     }
 }
+
+private fun isPackageInstalled(context: android.content.Context, packageName: String): Boolean =
+    runCatching {
+        context.packageManager.getApplicationInfo(packageName, 0)
+        true
+    }.getOrDefault(false)
 
 private fun openCloneInstaller(context: android.content.Context, apkFile: java.io.File) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
