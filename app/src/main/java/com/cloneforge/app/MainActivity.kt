@@ -729,8 +729,8 @@ private fun CloneDetailsScreen(
     var verification by remember(record.apkPath) { mutableStateOf<ApkFileVerification?>(null) }
     var integrityVerification by remember(record.apkPath) { mutableStateOf<CloneIntegrityReport?>(null) }
     var verificationError by remember(record.apkPath) { mutableStateOf<String?>(null) }
-    val currentSha256 = remember(record.apkPath, record.sha256) {
-        if (record.sha256.isBlank() && file.exists()) sha256(file) else record.sha256
+    var displayedSha256 by remember(record.apkPath, record.sha256) {
+        mutableStateOf(if (record.sha256.isBlank() && file.exists()) sha256(file) else record.sha256)
     }
 
     if (showDeleteDialog) {
@@ -812,7 +812,7 @@ private fun CloneDetailsScreen(
                 Text("SHA-256", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    currentSha256.ifBlank { "SHA-256 unavailable" },
+                    displayedSha256.ifBlank { "SHA-256 unavailable" },
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
@@ -822,14 +822,14 @@ private fun CloneDetailsScreen(
                 ) {
                     OutlinedButton(
                         onClick = {
-                            if (currentSha256.isNotBlank()) {
+                            if (displayedSha256.isNotBlank()) {
                                 val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                 clipboard.setPrimaryClip(
-                                    android.content.ClipData.newPlainText("CloneForge SHA-256", currentSha256)
+                                    android.content.ClipData.newPlainText("CloneForge SHA-256", displayedSha256)
                                 )
                             }
                         },
-                        enabled = currentSha256.isNotBlank(),
+                        enabled = displayedSha256.isNotBlank(),
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Copy SHA-256")
@@ -849,6 +849,9 @@ private fun CloneDetailsScreen(
                                 result.onSuccess { report ->
                                     integrityVerification = report
                                     verification = ApkFileVerifier().verify(file)
+                                    if (file.exists()) {
+                                        displayedSha256 = withContext(Dispatchers.IO) { sha256(file) }
+                                    }
                                 }
                                 result.onFailure { throwable ->
                                     integrityVerification = null
