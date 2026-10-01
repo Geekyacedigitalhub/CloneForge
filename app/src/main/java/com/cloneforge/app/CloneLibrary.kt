@@ -52,8 +52,8 @@ class CloneLibrary(private val context: Context) {
 
         val fingerprint = Pair(file.length(), file.lastModified())
         val cached = integrityCache[record.apkPath]
-        if (cached?.first == fingerprint.first && cached.second.isNotBlank()) {
-            return cached.second
+        if (cached?.first == fingerprint.first && cached.second == fingerprint.second) {
+            return cached.third
         }
 
         val label = if (sha256(file).equals(record.sha256, ignoreCase = true)) {
@@ -61,7 +61,7 @@ class CloneLibrary(private val context: Context) {
         } else {
             "Integrity: Checksum mismatch"
         }
-        integrityCache[record.apkPath] = fingerprint.first to label
+        integrityCache[record.apkPath] = Triple(fingerprint.first, fingerprint.second, label)
         return label
     }
 
