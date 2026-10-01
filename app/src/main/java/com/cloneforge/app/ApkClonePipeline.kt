@@ -18,7 +18,8 @@ class ApkClonePipeline(
     private val workspaceManager: ApkWorkspaceManager = ApkWorkspaceManager(),
     private val manifestTransformer: BinaryManifestTransformer = BinaryManifestTransformer(),
     private val plainTextRewriter: ApkPlainTextReferenceRewriter = ApkPlainTextReferenceRewriter(),
-    private val dexPackageRewriter: DexPackageRewriter = DexPackageRewriter()
+    private val dexPackageRewriter: DexPackageRewriter = DexPackageRewriter(),
+    private val apkCloneVerifier: ApkCloneVerifier = ApkCloneVerifier()
 ) {
 
     fun buildUnsignedClone(
@@ -63,12 +64,27 @@ class ApkClonePipeline(
         )
         packUnsignedApk(workspace.unpackedDir, output)
 
+        val verification = apkCloneVerifier.verify(
+            apkFile = output,
+            sourcePackage = plan.sourcePackage,
+            clonePackage = plan.clonePackage
+        )
+        require(verification.verified) {
+            "Final APK verification failed: manifestPackage=${verification.manifestPackage}, " +
+                "sourceDescriptorOccurrences=${verification.sourceDescriptorOccurrences}, " +
+                "cloneDescriptorOccurrences=${verification.cloneDescriptorOccurrences}, " +
+                "dexFilesChecked=${verification.dexFilesChecked}"
+        }
+
         UnsignedCloneArtifact(
             apkFile = output,
             sourcePackage = plan.sourcePackage,
             clonePackage = plan.clonePackage,
             cloneName = plan.cloneName,
-            manifestChanged = rewrite.packageChanged || rewrite.labelChanged || textRewrite.replacements > 0 || dexRewriteCount > 0
+            manifestChanged = rewrite.packageChanged ||
+                rewrite.labelChanged ||
+                textRewrite.replacements > 0 ||
+                dexRewriteCount > 0
         )
     }
 
@@ -77,7 +93,11 @@ class ApkClonePipeline(
         unpackedDir.walkTopDown()
             .filter { it.isFile && it.name.matches(Regex("classes([2-9][0-9]*)?\\.dex")) }
             .forEach { dex ->
-                replacements += dexPackageRewriter.rewrite(dex, plan.sourcePackage, plan.clonePackage).getOrThrow().replacements
+                replacements += dexPackageRewriter.rewrite(
+                    dex,
+                    plan.sourcePackage,
+                    plan.clonePackage
+                ).getOrThrow().replacements
             }
         return replacements
     }
