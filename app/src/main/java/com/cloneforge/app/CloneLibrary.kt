@@ -137,6 +137,174 @@ class CloneLibrary(private val context: Context) {
         }
     }
 
+
+    fun exportBackup(uri: Uri): Int {
+        cleanupStaleRecords()
+        val records = list()
+        val output = context.contentResolver.openOutputStream(uri)
+            ?: error("Unable to open the selected backup destination.")
+
+        output.use { stream ->
+            java.util.zip.ZipOutputStream(stream).use { zip ->
+                zip.putNextEntry(java.util.zip.ZipEntry("cloneforge-backup.json"))
+                zip.write(JSONObject().apply {
+                    put("format", "CloneForge")
+                    put("version", 1)
+                    put("createdAt", System.currentTimeMillis())
+                    put("clones", JSONArray().apply {
+                        records.forEachIndexed { index, record ->
+                            put(JSONObject().apply {
+                                put("index", index)
+                                put("cloneName", record.cloneName)
+                                put("sourcePackage", record.sourcePackage)
+                                put("clonePackage", record.clonePackage)
+                                put("createdAt", record.createdAt)
+                                put("sha256", record.sha256)
+                                put("apkEntry", "apks/" + index + ".apk")
+                            })
+                        }
+                    })
+                }.toString(2).toByteArray(Charsets.UTF_8))
+                zip.closeEntry()
+
+                records.forEachIndexed { index, record ->
+                    val apk = File(record.apkPath)
+                    require(apk.exists() && apk.isFile) {
+                        "Missing clone APK: " + record.cloneName
+                    }
+                    zip.putNextEntry(java.util.zip.ZipEntry("apks/" + index + ".apk"))
+                    apk.inputStream().use { input -> input.copyTo(zip) }
+                    zip.closeEntry()
+                }
+            }
+        }
+        return records.size
+    }
+
+    fun restoreBackup(uri: Uri): Int {
+        val input = context.contentResolver.openInputStream(uri)
+            ?: error("Unable to open the selected backup.")
+
+        val restoreRoot = File(
+            buildRoot,
+            "restore-" + System.currentTimeMillis() + "-" + System.nanoTime()
+        ).apply { mkdirs() }
+        val metadataFile = File(restoreRoot, "cloneforge-backup.json")
+
+        try {
+            input.use { source ->
+                java.util.zip.ZipInputStream(source).use { zip ->
+                    while (true) {
+                        val entry = zip.nextEntry ?: break
+                        val safeName = entry.name.replace('\\', '/')
+                        if (entry.isDirectory) {
+                            zip.closeEntry()
+                            continue
+                        }
+
+                        when {
+                            safeName == "cloneforge-backup.json" -> {
+                                metadataFile.outputStream().use { output -> zip.copyTo(output) }
+                            }
+                            safeName.startsWith("apks/") &&
+                                safeName.substringAfter("apks/").matches(Regex("[0-9]+\\.apk")) -> {
+                                val destination = File(
+                                    restoreRoot,
+                                    safeName.substringAfter("apks/")
+                                )
+                                destination.outputStream().use { output -> zip.copyTo(output) }
+                            }
+                            else -> error("Backup contains an unsupported or unsafe entry.")
+                        }
+                        zip.closeEntry()
+                    }
+                }
+            }
+
+            require(metadataFile.exists()) { "Backup metadata is missing." }
+            val metadata = JSONObject(metadataFile.readText())
+            require(metadata.optString("format") == "CloneForge") {
+                "This file is not a CloneForge backup."
+            }
+            require(metadata.optInt("version", -1) == 1) {
+                "This CloneForge backup version is not supported."
+            }
+
+            val clones = metadata.optJSONArray("clones") ?: JSONArray()
+            var restored = 0
+
+            for (i in 0 until clones.length()) {
+                val item = clones.getJSONObject(i)
+                val entryName = item.getString("apkEntry").replace('\\', '/')
+                require(
+                    entryName.startsWith("apks/") &&
+                        entryName.substringAfter("apks/").matches(Regex("[0-9]+\\.apk"))
+                ) { "Backup contains an invalid APK reference." }
+
+                val sourceApk = File(restoreRoot, entryName.substringAfter("apks/"))
+                require(sourceApk.exists() && sourceApk.isFile) {
+                    "Backup APK is missing: " + entryName
+                }
+
+                val verification = ApkFileVerifier().verify(sourceApk)
+                require(verification.verified) {
+                    verification.error ?: "Backup APK could not be verified."
+                }
+
+                val packageName = verification.manifestPackage
+                    ?.takeIf { it.isNotBlank() }
+                    ?: error("Backup APK package name is missing.")
+
+                val declaredPackage = item.getString("clonePackage")
+                require(packageName == declaredPackage) {
+                    "Backup package mismatch for " + item.optString("cloneName", "clone") + "."
+                }
+
+                val destinationDir = File(
+                    buildRoot,
+                    "imports/" + sanitize(packageName)
+                ).apply { mkdirs() }
+                val destination = File(
+                    destinationDir,
+                    sanitize(item.optString("cloneName", "Restored Clone")) + ".apk"
+                )
+                sourceApk.copyTo(destination, overwrite = true)
+
+                val existing = findByClonePackage(packageName)
+                existing?.let {
+                    if (File(it.apkPath).absolutePath != destination.absolutePath) {
+                        File(it.apkPath).delete()
+                    }
+                    File(buildRoot, sanitize(it.clonePackage)).deleteRecursively()
+                }
+
+                val actualSha256 = calculateSha256(destination)
+                val expectedSha256 = item.optString("sha256", "")
+                if (expectedSha256.isNotBlank()) {
+                    require(actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                        "SHA-256 mismatch for " + item.optString("cloneName", "clone") + "."
+                    }
+                }
+
+                add(
+                    CloneRecord(
+                        cloneName = item.optString("cloneName", "Restored Clone"),
+                        sourcePackage = item.optString("sourcePackage", "Restored Backup"),
+                        clonePackage = packageName,
+                        apkPath = destination.absolutePath,
+                        createdAt = item.optLong("createdAt", System.currentTimeMillis()),
+                        sha256 = actualSha256
+                    )
+                )
+                restored++
+            }
+
+            return restored
+        } finally {
+            restoreRoot.deleteRecursively()
+        }
+    }
+
     fun delete(record: CloneRecord): Boolean {
         val apkFile = File(record.apkPath)
         val deleted = !apkFile.exists() || apkFile.delete()
