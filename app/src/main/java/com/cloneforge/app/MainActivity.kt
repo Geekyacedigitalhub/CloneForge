@@ -179,6 +179,17 @@ private fun CloneForgeApp(
                                 record.sourcePackage.lowercase().contains(query)
                         )
                     }
+                    deleteFeedback?.let {
+                        Card(
+                            Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            )
+                        ) {
+                            Text(it, Modifier.padding(14.dp))
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
                     if (filteredLibrary.isEmpty()) {
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp)) {
