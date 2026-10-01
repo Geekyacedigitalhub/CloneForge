@@ -106,6 +106,8 @@ private fun CloneForgeApp(
     var installedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var importBusy by remember { mutableStateOf(false) }
     var backupBusy by remember { mutableStateOf(false) }\n    var showRestoreDialog by remember { mutableStateOf(false) }
+    var integrityBusy by remember { mutableStateOf(false) }
+    var integrityReport by remember { mutableStateOf<CloneIntegrityReport?>(null) }
     val scope = rememberCoroutineScope()
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -211,7 +213,27 @@ private fun CloneForgeApp(
     }
 
     Scaffold(topBar = { TopAppBar(title = { Text("CloneForge") }) }) { padding ->
-        if (backupBusy) {
+        integrityReport?.let { report ->
+        AlertDialog(
+            onDismissRequest = { integrityReport = null },
+            title = { Text(if (report.isHealthy) "Library is healthy" else "Library integrity issues") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text("Checked: " + report.checked)
+                    Text("Healthy: " + report.healthy)
+                    if (report.issues.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        report.issues.forEach { issue ->
+                            Text(issue.cloneName + " (" + issue.clonePackage + "): " + issue.message, style = MaterialTheme.typography.bodySmall)
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { integrityReport = null }) { Text("Close") } }
+        )
+    }
+    if (backupBusy) {
         AlertDialog(
             onDismissRequest = { },
             title = { Text("Working…") },
@@ -302,6 +324,31 @@ private fun CloneForgeApp(
             enabled = !backupBusy && !importBusy
         ) {
             Text("Restore")
+        }
+        TextButton(
+            onClick = {
+                integrityBusy = true
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching { cloneLibrary.checkIntegrity() }
+                    }
+                    integrityBusy = false
+                    result.onSuccess { report ->
+                        integrityReport = report
+                        deleteFeedback = if (report.isHealthy) {
+                            "Integrity check passed: " + report.healthy + " clone(s) healthy."
+                        } else {
+                            "Integrity check found " + report.issues.size + " issue(s)."
+                        }
+                    }.onFailure { throwable ->
+                        deleteFeedback = "Integrity check failed: " +
+                            (throwable.message ?: "Unable to check the clone library.")
+                    }
+                }
+            },
+            enabled = !integrityBusy && !backupBusy && !importBusy
+        ) {
+            Text(if (integrityBusy) "Checking…" else "Check Integrity")
         },
                         enabled = !backupBusy && !importBusy
                     ) {
