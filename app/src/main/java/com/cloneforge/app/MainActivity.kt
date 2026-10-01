@@ -228,6 +228,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var progress by remember { mutableStateOf(0f) }
     var artifact by remember { mutableStateOf<CloneArtifact?>(null) }
 
     LaunchedEffect(app.packageName) {
@@ -287,6 +288,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
             onClick = {
                 busy = true
                 status = "Starting clone build…"
+                progress = 0.02f
                 error = null
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
@@ -294,9 +296,18 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                             sourcePackage = app.packageName,
                             cloneName = cloneName,
                             packageSuffix = packageSuffix,
-                            onProgress = { progress ->
+                            onProgress = { stage ->
                                 scope.launch {
-                                    status = progress
+                                    status = stage
+                                    progress = when {
+                                        stage.startsWith("Validating") -> 0.10f
+                                        stage.startsWith("Inspecting") -> 0.25f
+                                        stage.startsWith("Preparing") -> 0.40f
+                                        stage.startsWith("Rebuilding") -> 0.65f
+                                        stage.startsWith("Signing") -> 0.85f
+                                        stage.startsWith("Saving") -> 0.95f
+                                        else -> progress
+                                    }
                                 }
                             }
                         )
@@ -304,8 +315,10 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                     busy = false
                     result.onSuccess { built ->
                         artifact = built
+                        progress = 1f
                         status = "Signed APK created: ${built.apkFile.name}\nPackage: ${built.clonePackage}\nPath: ${built.apkFile.absolutePath}"
                     }.onFailure { throwable ->
+                        progress = 0f
                         status = null
                         error = throwable.message ?: "Clone build failed."
                     }
@@ -327,6 +340,14 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                 onClick = { openCloneInstaller(context, built.apkFile) },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Install Clone") }
+        }
+
+        if (busy || progress > 0f) {
+            Spacer(Modifier.height(16.dp))
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         status?.let {
