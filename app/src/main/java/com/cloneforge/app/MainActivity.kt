@@ -129,8 +129,30 @@ private fun CloneForgeApp(
                                 record.sourcePackage.lowercase().contains(query)
                         )
                     }
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-                        items(filteredLibrary) { record ->
+                    if (filteredLibrary.isEmpty()) {
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(
+                                    if (libraryQuery.isBlank() && libraryFilter == "All") {
+                                        "No clones available yet."
+                                    } else {
+                                        "No clones match this search or filter."
+                                    },
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    if (libraryQuery.isBlank() && libraryFilter == "All") {
+                                        "Build a clone from an installed app to see it here."
+                                    } else {
+                                        "Try another search term or switch the status filter."
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                            items(filteredLibrary) { record ->
                             val file = java.io.File(record.apkPath)
                             Card(Modifier.fillMaxWidth()) {
                                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
