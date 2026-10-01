@@ -74,6 +74,20 @@ class CloneLibrary(private val context: Context) {
             ?.forEach { it.deleteRecursively() }
     }
 
+    fun deleteAll(): Int {
+        val records = list()
+        var deleted = 0
+
+        records.forEach { record ->
+            if (delete(record)) {
+                deleted++
+            }
+        }
+
+        cleanupOrphanedBuildWorkspaces()
+        return deleted
+    }
+
     fun cleanupStaleRecords() {
         if (!metadataFile.exists()) return
 
