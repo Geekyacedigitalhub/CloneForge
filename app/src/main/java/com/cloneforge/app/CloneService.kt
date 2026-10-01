@@ -70,7 +70,7 @@ class CloneService(private val context: Context) {
 
             val signedOutput = File(
                 unsigned.apkFile.parentFile,
-                sanitize(plan.cloneName) + ".apk"
+                sanitize(plan.cloneName) + "-" + sanitize(plan.clonePackage) + ".apk"
             )
 
             signer.sign(unsigned.apkFile, signedOutput).getOrThrow()
