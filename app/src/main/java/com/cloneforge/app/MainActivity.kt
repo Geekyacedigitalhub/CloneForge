@@ -728,6 +728,7 @@ private fun CloneDetailsScreen(
     var verifying by remember { mutableStateOf(false) }
     var verification by remember(record.apkPath) { mutableStateOf<ApkFileVerification?>(null) }
     var integrityVerification by remember(record.apkPath) { mutableStateOf<CloneIntegrityReport?>(null) }
+    var verificationError by remember(record.apkPath) { mutableStateOf<String?>(null) }
     val currentSha256 = remember(record.apkPath, record.sha256) {
         if (record.sha256.isBlank() && file.exists()) sha256(file) else record.sha256
     }
@@ -837,6 +838,8 @@ private fun CloneDetailsScreen(
                         onClick = {
                             verifying = true
                             verification = null
+                            integrityVerification = null
+                            verificationError = null
                             scope.launch {
                                 val result = withContext(Dispatchers.IO) {
                                     runCatching {
@@ -847,9 +850,10 @@ private fun CloneDetailsScreen(
                                     integrityVerification = report
                                     verification = ApkFileVerifier().verify(file)
                                 }
-                                result.onFailure {
+                                result.onFailure { throwable ->
                                     integrityVerification = null
                                     verification = null
+                                    verificationError = throwable.message ?: "Unable to complete the integrity check."
                                 }
                                 verifying = false
                             }
@@ -859,6 +863,22 @@ private fun CloneDetailsScreen(
                     ) {
                         Text(if (verifying) "Checking…" else "Verify APK")
                     }
+                }
+                if (verifying) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Running full integrity verification…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                verificationError?.let { message ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Verification could not be completed: " + message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
                 verification?.let { result ->
                     Spacer(Modifier.height(10.dp))
