@@ -95,6 +95,7 @@ private fun CloneForgeApp(
 ) {
     val context = LocalContext.current
     var selected by remember { mutableStateOf<InstalledApp?>(null) }
+    var selectedClone by remember { mutableStateOf<CloneRecord?>(null) }
     val cloneLibrary = remember { CloneLibrary(context) }
     var library by remember { mutableStateOf(cloneLibrary.list()) }
     var libraryQuery by remember { mutableStateOf("") }
@@ -167,7 +168,18 @@ private fun CloneForgeApp(
     }
 
     Scaffold(topBar = { TopAppBar(title = { Text("CloneForge") }) }) { padding ->
-        if (selected == null) {
+        if (selectedClone != null) {
+            CloneDetailsScreen(
+                record = selectedClone!!,
+                installed = selectedClone!!.clonePackage in installedPackages,
+                onBack = { selectedClone = null },
+                onDelete = {
+                    cloneLibrary.delete(selectedClone!!)
+                    selectedClone = null
+                    refreshLibrary()
+                }
+            )
+        } else if (selected == null) {
             Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Installed Apps", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
@@ -289,7 +301,7 @@ private fun CloneForgeApp(
                             val sourceIcon = remember(record.sourcePackage) {
                                 loadApplicationIcon(context, record.sourcePackage)
                             }
-                            Card(Modifier.fillMaxWidth()) {
+                            Card(Modifier.fillMaxWidth().clickable { selectedClone = record }) {
                                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                     sourceIcon?.let { icon ->
                                         Image(
@@ -393,6 +405,163 @@ private fun CloneForgeApp(
         } else {
             CloneSetupScreen(selected!!, Modifier.padding(padding)) { selected = null }
         }
+    }
+}
+
+@Composable
+private fun CloneDetailsScreen(
+    record: CloneRecord,
+    installed: Boolean,
+    onBack: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val context = LocalContext.current
+    val file = remember(record.apkPath) { File(record.apkPath) }
+    val sourceIcon = remember(record.sourcePackage) {
+        loadApplicationIcon(context, record.sourcePackage)
+    }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete clone?") },
+            text = { Text("This removes the saved APK and its local build workspace. An installed clone is not uninstalled.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    onDelete()
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        TextButton(onClick = onBack) { Text("← Back to Clone Library") }
+        Spacer(Modifier.height(8.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            sourceIcon?.let {
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = record.cloneName,
+                    modifier = Modifier.size(72.dp)
+                )
+                Spacer(Modifier.width(16.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Text(record.cloneName, style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    if (installed) "Installed" else "APK ready",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (installed) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Clone information", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(12.dp))
+                DetailRow("Clone package", record.clonePackage)
+                DetailRow("Source package", record.sourcePackage)
+                DetailRow("APK file", file.name)
+                DetailRow("APK size", formatFileSize(file.length()))
+                DetailRow(
+                    "Created",
+                    DateFormat.getDateTimeInstance(
+                        DateFormat.MEDIUM,
+                        DateFormat.SHORT
+                    ).format(Date(record.createdAt))
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Integrity", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                Text("SHA-256", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (record.sha256.isBlank()) {
+                        sha256(file)
+                    } else {
+                        record.sha256
+                    },
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Use this fingerprint to confirm that a shared APK matches the file received by your team.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        Button(
+            onClick = { openCloneInstaller(context, file) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (installed) "Update Installed Clone" else "Install Clone")
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedButton(
+            onClick = {
+                shareCloneApk(
+                    context,
+                    file,
+                    record.cloneName,
+                    record.sourcePackage,
+                    record.clonePackage
+                )
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Share APK")
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        TextButton(
+            onClick = { showDeleteDialog = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Delete Clone", color = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(value, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
