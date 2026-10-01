@@ -4,7 +4,8 @@ data class CloneCompatibility(
     val supported: Boolean,
     val title: String,
     val issues: List<String>,
-    val warnings: List<String>
+    val warnings: List<String>,
+    val packageReferenceCount: Int = 0
 )
 
 object CloneCompatibilityChecker {
@@ -23,13 +24,17 @@ object CloneCompatibilityChecker {
         if (inspection.dexCount > 1) {
             warnings += "The APK contains ${inspection.dexCount} DEX files. Multi-DEX apps may contain hardcoded package references."
         }
+        if (packageReferenceCount > 0) {
+            warnings += "Detected $packageReferenceCount raw references to the source package. These may require rewriting."
+        }
         if (isSplitApk) issues += "This app uses split APKs. CloneForge currently requires a single base APK."
 
         return CloneCompatibility(
             supported = issues.isEmpty(),
             title = if (issues.isEmpty()) "Ready for cloning" else "Special handling required",
             issues = issues,
-            warnings = warnings
+            warnings = warnings,
+            packageReferenceCount = packageReferenceCount
         )
     }
 }
