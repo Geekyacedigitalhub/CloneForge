@@ -334,6 +334,20 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
             Text("Compatibility check unavailable: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.height(20.dp))
+        if (preflight == null && preflightError == null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Running compatibility check…",
+                style = MaterialTheme.typography.bodySmall
+            )
+        } else if (preflight?.compatibility?.supported == false) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Fix the blocking compatibility issues above before building this clone.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
         Button(
             onClick = {
                 busy = true
@@ -380,7 +394,8 @@ Path: ${built.apkFile.absolutePath}"
                 cloneName.isNotBlank() &&
                 packageSuffix.isNotBlank() &&
                 previewPackage != null &&
-                !packageTaken,
+                !packageTaken &&
+                preflight?.compatibility?.supported == true,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(if (busy) "Building…" else "Build & Sign Clone")
