@@ -9,8 +9,6 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -51,6 +49,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun CloneForgeApp(apps: List<InstalledApp>) {
+    val context = LocalContext.current
     var selected by remember { mutableStateOf<InstalledApp?>(null) }
     var library by remember { mutableStateOf(CloneLibrary(LocalContext.current).list()) }
     Scaffold(topBar = { TopAppBar(title = { Text("CloneForge") }) }) { padding ->
@@ -70,10 +69,8 @@ private fun CloneForgeApp(apps: List<InstalledApp>) {
                                         Text(record.cloneName, style = MaterialTheme.typography.titleMedium)
                                         Text(record.clonePackage, style = MaterialTheme.typography.bodySmall)
                                     }
-                                    TextButton(onClick = { openCloneInstaller(context = LocalContext.current, apkFile = file) }) { Text("Install") }
-                                    IconButton(onClick = { CloneLibrary(LocalContext.current).delete(record); library = CloneLibrary(LocalContext.current).list() }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete clone")
-                                    }
+                                    TextButton(onClick = { openCloneInstaller(context, file) }) { Text("Install") }
+                                    TextButton(onClick = { CloneLibrary(context).delete(record); library = CloneLibrary(context).list() }) { Text("Delete") }
                                 }
                             }
                         }
