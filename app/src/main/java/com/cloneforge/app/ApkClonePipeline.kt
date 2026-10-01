@@ -16,7 +16,8 @@ data class UnsignedCloneArtifact(
 
 class ApkClonePipeline(
     private val workspaceManager: ApkWorkspaceManager = ApkWorkspaceManager(),
-    private val manifestTransformer: BinaryManifestTransformer = BinaryManifestTransformer()
+    private val manifestTransformer: BinaryManifestTransformer = BinaryManifestTransformer(),
+    private val plainTextRewriter: ApkPlainTextReferenceRewriter = ApkPlainTextReferenceRewriter()
 ) {
 
     fun buildUnsignedClone(
@@ -47,6 +48,12 @@ class ApkClonePipeline(
 
         manifestFile.writeBytes(rewrite.data)
 
+        val textRewrite = plainTextRewriter.rewrite(
+            unpackedDir = workspace.unpackedDir,
+            sourcePackage = plan.sourcePackage,
+            clonePackage = plan.clonePackage
+        )
+
         val output = workspaceManager.outputApk(
             workspace,
             plan.cloneName + "-unsigned.apk"
@@ -58,7 +65,7 @@ class ApkClonePipeline(
             sourcePackage = plan.sourcePackage,
             clonePackage = plan.clonePackage,
             cloneName = plan.cloneName,
-            manifestChanged = rewrite.packageChanged || rewrite.labelChanged
+            manifestChanged = rewrite.packageChanged || rewrite.labelChanged || textRewrite.replacements > 0
         )
     }
 
