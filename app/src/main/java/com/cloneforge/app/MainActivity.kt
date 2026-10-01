@@ -246,7 +246,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         Spacer(Modifier.height(24.dp))
         OutlinedTextField(
             value = cloneName,
-            onValueChange = { cloneName = it; error = null },
+            onValueChange = {\n                cloneName = it\n                error = null\n                artifact = null\n                status = null\n                progress = 0f\n            },
             label = { Text("Clone name") },
             modifier = Modifier.fillMaxWidth(),
             enabled = !busy
@@ -254,7 +254,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = packageSuffix,
-            onValueChange = { packageSuffix = it; error = null },
+            onValueChange = {\n                packageSuffix = it\n                error = null\n                artifact = null\n                status = null\n                progress = 0f\n            },
             label = { Text("Package suffix") },
             supportingText = { Text("Example: clone1 → ${app.packageName}.clone1") },
             modifier = Modifier.fillMaxWidth(),
