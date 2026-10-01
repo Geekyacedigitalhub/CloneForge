@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import java.io.File
 import java.text.DateFormat
 import java.util.Date
 import androidx.core.content.FileProvider
@@ -230,12 +231,27 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
     var error by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf(0f) }
     var artifact by remember { mutableStateOf<CloneArtifact?>(null) }
+    var preflight by remember { mutableStateOf<ClonePreflight?>(null) }
+    var preflightError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(app.packageName) {
         val nextIndex = withContext(Dispatchers.IO) {
             CloneService(context).nextAvailableCloneIndexForUi(app.packageName)
         }
         packageSuffix = "clone$nextIndex"
+
+        val info = runCatching { context.packageManager.getApplicationInfo(app.packageName, 0) }.getOrNull()
+        if (info != null) {
+            withContext(Dispatchers.IO) {
+                ClonePreflightService().inspect(File(info.sourceDir), app.packageName)
+            }.onSuccess {
+                preflight = it
+                preflightError = null
+            }.onFailure {
+                preflight = null
+                preflightError = it.message ?: "Unable to inspect app compatibility."
+            }
+        }
     }
 
     Column(modifier.fillMaxSize().padding(24.dp)) {
@@ -246,7 +262,13 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         Spacer(Modifier.height(24.dp))
         OutlinedTextField(
             value = cloneName,
-            onValueChange = {\n                cloneName = it\n                error = null\n                artifact = null\n                status = null\n                progress = 0f\n            },
+            onValueChange = {
+                cloneName = it
+                error = null
+                artifact = null
+                status = null
+                progress = 0f
+            },
             label = { Text("Clone name") },
             modifier = Modifier.fillMaxWidth(),
             enabled = !busy
@@ -254,7 +276,13 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = packageSuffix,
-            onValueChange = {\n                packageSuffix = it\n                error = null\n                artifact = null\n                status = null\n                progress = 0f\n            },
+            onValueChange = {
+                packageSuffix = it
+                error = null
+                artifact = null
+                status = null
+                progress = 0f
+            },
             label = { Text("Package suffix") },
             supportingText = { Text("Example: clone1 → ${app.packageName}.clone1") },
             modifier = Modifier.fillMaxWidth(),
@@ -282,6 +310,28 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                     }
                 )
             }
+        }
+        preflight?.let { report ->
+            Spacer(Modifier.height(16.dp))
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Compatibility check", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(6.dp))
+                    Text(report.compatibility.title)
+                    report.compatibility.issues.forEach { issue ->
+                        Spacer(Modifier.height(6.dp))
+                        Text("• $issue", color = MaterialTheme.colorScheme.error)
+                    }
+                    report.compatibility.warnings.forEach { warning ->
+                        Spacer(Modifier.height(6.dp))
+                        Text("• $warning", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+        preflightError?.let {
+            Spacer(Modifier.height(12.dp))
+            Text("Compatibility check unavailable: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.height(20.dp))
         Button(
@@ -316,7 +366,9 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                     result.onSuccess { built ->
                         artifact = built
                         progress = 1f
-                        status = "Signed APK created: ${built.apkFile.name}\nPackage: ${built.clonePackage}\nPath: ${built.apkFile.absolutePath}"
+                        status = "Signed APK created: ${built.apkFile.name}
+Package: ${built.clonePackage}
+Path: ${built.apkFile.absolutePath}"
                     }.onFailure { throwable ->
                         progress = 0f
                         status = null
