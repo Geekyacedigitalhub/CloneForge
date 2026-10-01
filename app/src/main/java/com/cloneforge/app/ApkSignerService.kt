@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.android.apksig.ApkSigner
+import com.android.apksig.ApkVerifier
 import java.io.File
 import java.math.BigInteger
 import java.security.KeyPairGenerator
@@ -51,6 +52,17 @@ class ApkSignerService(private val context: Context) {
 
         require(signedApk.exists() && signedApk.length() > 0) {
             "APK signing completed without producing an output file."
+        }
+
+        val verification = ApkVerifier.Builder(signedApk)
+            .setMinCheckedPlatformVersion(26)
+            .build()
+            .verify()
+        require(verification.isVerified()) {
+            "APK signature verification failed after signing."
+        }
+        require(verification.isVerifiedUsingV2Scheme() || verification.isVerifiedUsingV3Scheme()) {
+            "APK does not have a verified v2 or v3 signature."
         }
 
         signedApk
