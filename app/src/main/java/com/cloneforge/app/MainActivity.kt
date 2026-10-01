@@ -235,22 +235,35 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
     var preflightError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(app.packageName) {
+        preflight = null
+        preflightError = null
+        artifact = null
+        status = null
+        error = null
+        progress = 0f
+
         val nextIndex = withContext(Dispatchers.IO) {
             CloneService(context).nextAvailableCloneIndexForUi(app.packageName)
         }
         packageSuffix = "clone$nextIndex"
 
-        val info = runCatching { context.packageManager.getApplicationInfo(app.packageName, 0) }.getOrNull()
-        if (info != null) {
-            withContext(Dispatchers.IO) {
-                ClonePreflightService().inspect(File(info.sourceDir), app.packageName)
-            }.onSuccess {
-                preflight = it
-                preflightError = null
-            }.onFailure {
-                preflight = null
-                preflightError = it.message ?: "Unable to inspect app compatibility."
-            }
+        val info = runCatching {
+            context.packageManager.getApplicationInfo(app.packageName, 0)
+        }.getOrNull()
+
+        if (info == null) {
+            preflightError = "Unable to inspect the selected installed app."
+            return@LaunchedEffect
+        }
+
+        withContext(Dispatchers.IO) {
+            ClonePreflightService().inspect(File(info.sourceDir), app.packageName)
+        }.onSuccess {
+            preflight = it
+            preflightError = null
+        }.onFailure {
+            preflight = null
+            preflightError = it.message ?: "Unable to inspect app compatibility."
         }
     }
 
