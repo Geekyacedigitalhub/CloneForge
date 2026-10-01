@@ -81,10 +81,14 @@ private fun CloneForgeApp(
     var libraryFilter by remember { mutableStateOf("All") }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var deleteFeedback by remember { mutableStateOf<String?>(null) }
+    var installedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     fun refreshLibrary() {
         cloneLibrary.cleanupStaleRecords()
         library = cloneLibrary.list()
+        installedPackages = library.mapNotNull { record ->
+            if (isPackageInstalled(context, record.clonePackage)) record.clonePackage else null
+        }.toSet()
     }
 
     LaunchedEffect(Unit) {
