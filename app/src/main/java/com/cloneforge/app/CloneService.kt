@@ -15,6 +15,7 @@ class CloneService(private val context: Context) {
     ): Result<UnsignedCloneArtifact> = runCatching {
         val applicationInfo = context.packageManager.getApplicationInfo(sourcePackage, 0)
         val source = engine.inspect(applicationInfo)
+            ?: error("Unable to inspect the selected installed app.")
         val workspace = engine.prepareWorkspace(source)
         engine.copySourceApk(source, workspace)
 
@@ -26,7 +27,10 @@ class CloneService(private val context: Context) {
 
         pipeline.buildUnsignedClone(
             sourceApk = File(workspace, "source.apk"),
-            workspaceRoot = File(context.filesDir, "clone-builds/${sanitize(source.packageName)}-$cloneIndex"),
+            workspaceRoot = File(
+                context.filesDir,
+                "clone-builds/${sanitize(source.packageName)}-$cloneIndex"
+            ),
             plan = plan
         ).getOrThrow()
     }
