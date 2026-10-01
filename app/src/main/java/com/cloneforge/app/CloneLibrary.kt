@@ -472,6 +472,7 @@ class CloneLibrary(private val context: Context) {
             it.apkPath == record.apkPath || it.clonePackage == record.clonePackage
         }
         writeRecords(remaining)
+        integrityCache.remove(record.apkPath)
         return deleted
     }
 
