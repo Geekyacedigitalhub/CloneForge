@@ -472,21 +472,59 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         val packageTaken = previewPackage?.let { isPackageInstalled(context, it) || cloneLibrary.findByClonePackage(it) != null } == true
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp)) {
-                Text("Package preview", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.height(4.dp))
+                Text("Package identity", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Original",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    app.packageName,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Clone",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Text(
                     when {
                         previewPackage == null -> "Enter a valid package suffix"
-                        packageTaken -> "Package already in use: $previewPackage"
                         else -> previewPackage
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (previewPackage == null || packageTaken) {
+                    color = if (previewPackage == null) {
                         MaterialTheme.colorScheme.error
                     } else {
                         MaterialTheme.colorScheme.onSurface
                     }
                 )
+                Spacer(Modifier.height(8.dp))
+                when {
+                    previewPackage == null -> {
+                        Text(
+                            "Use a valid suffix such as clone1.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    packageTaken -> {
+                        Text(
+                            "This clone package is already in use. Choose a different suffix.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    else -> {
+                        Text(
+                            "Package is available for this clone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
         }
         preflight?.let { report ->
