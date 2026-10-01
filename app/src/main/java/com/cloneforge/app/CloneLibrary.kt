@@ -454,6 +454,7 @@ class CloneLibrary(private val context: Context) {
                 )
             }
 
+            integrityCache.clear()
             return prepared.size
         } finally {
             restoreRoot.deleteRecursively()
