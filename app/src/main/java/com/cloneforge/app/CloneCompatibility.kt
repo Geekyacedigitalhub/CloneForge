@@ -21,7 +21,8 @@ object CloneCompatibilityChecker {
             warnings += "resources.arsc is preserved without binary package rewriting. Apps with package-specific resource metadata may need additional handling."
         }
         if (inspection.nativeLibraryCount > 0) {
-            warnings += "The APK contains ${inspection.nativeLibraryCount} native libraries. Native code may contain hardcoded package or signature checks."
+            warnings += "The APK contains ${inspection.nativeLibraryCount} native libraries. Native code is preserved as-is and may contain hardcoded package, path, or signature checks."
+            warnings += "Native libraries are not rewritten by CloneForge. Apps that require package-specific native configuration may not work after cloning."
         }
         if (inspection.dexCount > 1) {
             warnings += "The APK contains ${inspection.dexCount} DEX files. Multi-DEX apps may contain hardcoded package references."
