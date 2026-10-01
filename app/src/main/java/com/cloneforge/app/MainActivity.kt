@@ -101,6 +101,7 @@ private fun CloneForgeApp(
     var libraryQuery by remember { mutableStateOf("") }
     var appQuery by remember { mutableStateOf("") }
     var libraryFilter by remember { mutableStateOf("All") }
+    var integrityFilter by remember { mutableStateOf("All") }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var deleteFeedback by remember { mutableStateOf<String?>(null) }
     var installedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -407,6 +408,18 @@ private fun CloneForgeApp(
                         }
                     }
                     Spacer(Modifier.height(8.dp))
+                    Text("Integrity", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("All", "Verified", "Needs attention").forEach { filter ->
+                            FilterChip(
+                                selected = integrityFilter == filter,
+                                onClick = { integrityFilter = filter },
+                                label = { Text(filter) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                     val totalLibraryBytes = library.sumOf { record ->
                         java.io.File(record.apkPath).length()
                     }
@@ -433,8 +446,16 @@ private fun CloneForgeApp(
                             "APK Ready" -> !installed
                             else -> true
                         }
+                        val integrity = cloneLibrary.integrityLabel(record)
+                        val matchesIntegrity = when (integrityFilter) {
+                            "Verified" -> integrity == "Integrity: Verified"
+                            "Needs attention" ->
+                                integrity != "Integrity: Verified" &&
+                                    integrity != "Integrity: Checking…"
+                            else -> true
+                        }
                         val query = libraryQuery.trim().lowercase()
-                        matchesFilter && (
+                        matchesFilter && matchesIntegrity && (
                             query.isBlank() ||
                                 record.cloneName.lowercase().contains(query) ||
                                 record.clonePackage.lowercase().contains(query) ||
@@ -445,7 +466,7 @@ private fun CloneForgeApp(
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp)) {
                                 Text(
-                                    if (libraryQuery.isBlank() && libraryFilter == "All") {
+                                    if (libraryQuery.isBlank() && libraryFilter == "All" && integrityFilter == "All") {
                                         "No clones available yet."
                                     } else {
                                         "No clones match this search or filter."
@@ -456,7 +477,7 @@ private fun CloneForgeApp(
                                     if (libraryQuery.isBlank() && libraryFilter == "All") {
                                         "Build a clone from an installed app to see it here."
                                     } else {
-                                        "Try another search term or switch the status filter."
+                                        "Try another search term or switch the search, status, or integrity filter."
                                     },
                                     style = MaterialTheme.typography.bodyMedium
                                 )
