@@ -22,12 +22,9 @@ class ApkFileVerifierTest {
                 zip.closeEntry()
             }
 
-            val verifier = ApkFileVerifier(
-                manifestReader = object : BinaryManifestReader() {
-                    override fun read(data: ByteArray): BinaryManifestInfo =
-                        BinaryManifestInfo("com.example.clone", "Example", data.size)
-                }
-            )
+            val verifier = ApkFileVerifier { data ->
+                BinaryManifestInfo("com.example.clone", "Example", data.size)
+            }
 
             val result = verifier.verify(apk)
 
