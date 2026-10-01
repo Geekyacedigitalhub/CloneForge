@@ -279,16 +279,39 @@ private fun CloneForgeApp(
                 Spacer(Modifier.height(6.dp))
                 Text("Select an app to prepare it for cloning.")
                 Spacer(Modifier.height(16.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-                    items(filteredApps) { app ->
-                        Card(Modifier.fillMaxWidth().clickable { selected = app }) {
-                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(app.label, style = MaterialTheme.typography.titleMedium)
-                                    Text(app.packageName, style = MaterialTheme.typography.bodySmall)
-                                    Text("Version ${app.versionName}", style = MaterialTheme.typography.bodySmall)
+                if (filteredApps.isEmpty()) {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(
+                                if (appQuery.isBlank()) "No launchable apps found." else "No apps match your search.",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                if (appQuery.isBlank()) {
+                                    "CloneForge could not find any other launchable apps on this device."
+                                } else {
+                                    "Try another app name or package name."
+                                },
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(filteredApps) { app ->
+                            Card(Modifier.fillMaxWidth().clickable { selected = app }) {
+                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(app.label, style = MaterialTheme.typography.titleMedium)
+                                        Text(app.packageName, style = MaterialTheme.typography.bodySmall)
+                                        Text("Version ${app.versionName}", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    TextButton(onClick = { selected = app }) { Text("Clone") }
                                 }
-                                TextButton(onClick = { selected = app }) { Text("Clone") }
                             }
                         }
                     }
