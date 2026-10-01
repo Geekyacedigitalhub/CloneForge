@@ -68,14 +68,14 @@ class ApkClonePipeline(
             sourcePackage = plan.sourcePackage,
             clonePackage = plan.clonePackage,
             cloneName = plan.cloneName,
-            manifestChanged = rewrite.packageChanged || rewrite.labelChanged || textRewrite.replacements > 0
+            manifestChanged = rewrite.packageChanged || rewrite.labelChanged || textRewrite.replacements > 0 || dexRewriteCount > 0
         )
     }
 
     private fun rewriteDexFiles(unpackedDir: File, plan: ClonePlan): Int {
         var replacements = 0
         unpackedDir.walkTopDown()
-            .filter { it.isFile && it.name.matches(Regex("classes([2-9][0-9]*)?\\\\.dex")) }
+            .filter { it.isFile && it.name.matches(Regex("classes([2-9][0-9]*)?\\.dex")) }
             .forEach { dex ->
                 replacements += dexPackageRewriter.rewrite(dex, plan.sourcePackage, plan.clonePackage).getOrThrow().replacements
             }
