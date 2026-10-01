@@ -11,7 +11,8 @@ data class CloneRecord(
     val sourcePackage: String,
     val clonePackage: String,
     val apkPath: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val sha256: String = ""
 )
 
 data class ImportedClone(
@@ -37,7 +38,8 @@ class CloneLibrary(private val context: Context) {
                             item.getString("sourcePackage"),
                             item.getString("clonePackage"),
                             path,
-                            item.getLong("createdAt")
+                            item.getLong("createdAt"),
+                            item.optString("sha256", "")
                         )
                     )
                 }
@@ -85,6 +87,7 @@ class CloneLibrary(private val context: Context) {
         val apkInspection = ApkInspector().inspect(tempFile)
         require(apkInspection.hasDex) { "The selected APK does not contain DEX bytecode." }
 
+        val sha256 = calculateSha256(tempFile)
         val originalName = manifestInfo.applicationLabel?.takeIf { it.isNotBlank() }
             ?: tempFile.nameWithoutExtension.ifBlank { "Imported Clone" }
 
@@ -108,7 +111,8 @@ class CloneLibrary(private val context: Context) {
             sourcePackage = "Unknown (imported APK)",
             clonePackage = clonePackage,
             apkPath = destination.absolutePath,
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis(),
+            sha256 = sha256
         )
 
         add(record)
@@ -173,6 +177,19 @@ class CloneLibrary(private val context: Context) {
         writeRecords(validRecords)
     }
 
+    private fun calculateSha256(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
     private fun sanitize(value: String): String =
         value.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "app" }
 
@@ -185,6 +202,7 @@ class CloneLibrary(private val context: Context) {
                 put("clonePackage", it.clonePackage)
                 put("apkPath", it.apkPath)
                 put("createdAt", it.createdAt)
+                put("sha256", it.sha256)
             })
         }
         metadataFile.writeText(array.toString())
