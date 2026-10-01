@@ -105,7 +105,7 @@ private fun CloneForgeApp(
     var deleteFeedback by remember { mutableStateOf<String?>(null) }
     var installedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var importBusy by remember { mutableStateOf(false) }
-    var backupBusy by remember { mutableStateOf(false) }
+    var backupBusy by remember { mutableStateOf(false) }\n    var showRestoreDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -209,7 +209,42 @@ private fun CloneForgeApp(
     }
 
     Scaffold(topBar = { TopAppBar(title = { Text("CloneForge") }) }) { padding ->
-        if (selectedClone != null) {
+        if (showRestoreDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!backupBusy) showRestoreDialog = false },
+            title = { Text("Restore CloneForge backup?") },
+            text = {
+                Text(
+                    "The backup will be fully validated before changes are made. " +
+                        "If it contains a clone with the same package as an existing clone, " +
+                        "the existing clone will be replaced."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRestoreDialog = false
+                        backupRestoreLauncher.launch(
+                            arrayOf("application/zip", "application/octet-stream", "*/*")
+                        )
+                    },
+                    enabled = !backupBusy
+                ) {
+                    Text("Choose Backup")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showRestoreDialog = false },
+                    enabled = !backupBusy
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (selectedClone != null) {
             CloneDetailsScreen(
                 record = selectedClone!!,
                 installed = selectedClone!!.clonePackage in installedPackages,
@@ -246,9 +281,11 @@ private fun CloneForgeApp(
                         Text(if (backupBusy) "Working…" else "Backup")
                     }
                     TextButton(
-                        onClick = {
-                            backupRestoreLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
-                        },
+            onClick = { showRestoreDialog = true },
+            enabled = !backupBusy && !importBusy
+        ) {
+            Text("Restore")
+        },
                         enabled = !backupBusy && !importBusy
                     ) {
                         Text("Restore")
