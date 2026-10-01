@@ -1,7 +1,6 @@
 package com.cloneforge.app
 
 import java.io.File
-import java.nio.charset.Charset
 import java.util.zip.ZipFile
 
 data class DexPackageReference(
@@ -19,13 +18,16 @@ class DexReferenceScanner {
     fun scan(apk: File, sourcePackage: String): DexReferenceScan {
         require(sourcePackage.isNotBlank()) { "Source package is empty." }
 
+        val sourcePath = sourcePackage.replace('.', '/')
+        val descriptor = "L$sourcePath;"
+        val nestedPrefix = "L$sourcePath/"
+
         ZipFile(apk).use { zip ->
             val results = zip.entries().asSequence()
-                .filter { it.name.matches(Regex("classes([2-9][0-9]*)?\.dex")) }
+                .filter { isDexEntry(it.name) }
                 .mapNotNull { entry ->
                     val bytes = zip.getInputStream(entry).use { it.readBytes() }
-                    val text = bytes.toString(Charset.forName("ISO-8859-1"))
-                    val count = countOccurrences(text, sourcePackage)
+                    val count = countAscii(bytes, descriptor) + countAscii(bytes, nestedPrefix)
                     if (count == 0) null else DexPackageReference(entry.name, count)
                 }
                 .toList()
@@ -34,14 +36,31 @@ class DexReferenceScanner {
         }
     }
 
-    private fun countOccurrences(text: String, needle: String): Int {
-        var index = 0
+    private fun isDexEntry(name: String): Boolean =
+        name == "classes.dex" ||
+            Regex("classes[2-9][0-9]*\\.dex").matches(name)
+
+    private fun countAscii(data: ByteArray, value: String): Int {
+        val needle = value.toByteArray(Charsets.US_ASCII)
+        if (needle.isEmpty() || data.size < needle.size) return 0
+
         var count = 0
-        while (true) {
-            index = text.indexOf(needle, index)
-            if (index < 0) return count
-            count++
-            index += needle.length
+        var index = 0
+        while (index <= data.size - needle.size) {
+            var matched = true
+            for (offset in needle.indices) {
+                if (data[index + offset] != needle[offset]) {
+                    matched = false
+                    break
+                }
+            }
+            if (matched) {
+                count++
+                index += needle.size
+            } else {
+                index++
+            }
         }
+        return count
     }
 }
