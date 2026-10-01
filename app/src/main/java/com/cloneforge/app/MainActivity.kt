@@ -105,6 +105,7 @@ private fun CloneForgeApp(
     var deleteFeedback by remember { mutableStateOf<String?>(null) }
     var installedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var importBusy by remember { mutableStateOf(false) }
+    var backupBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -127,6 +128,42 @@ private fun CloneForgeApp(
                 }
             }.onFailure { throwable ->
                 deleteFeedback = "Import failed: " + (throwable.message ?: "The selected file could not be imported.")
+            }
+        }
+    }
+
+    val backupCreateLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        backupBusy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { cloneLibrary.exportBackup(uri) }
+            }
+            backupBusy = false
+            result.onSuccess { count ->
+                deleteFeedback = "Backed up $count clone(s) to the selected file."
+            }.onFailure { throwable ->
+                deleteFeedback = "Backup failed: " + (throwable.message ?: "The backup could not be created.")
+            }
+        }
+    }
+    val backupRestoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        backupBusy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { cloneLibrary.restoreBackup(uri) }
+            }
+            backupBusy = false
+            result.onSuccess { count ->
+                refreshLibrary()
+                deleteFeedback = "Restored $count clone(s) from the selected backup."
+            }.onFailure { throwable ->
+                deleteFeedback = "Restore failed: " + (throwable.message ?: "The backup could not be restored.")
             }
         }
     }
@@ -185,13 +222,34 @@ private fun CloneForgeApp(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Installed Apps", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                     TextButton(
-                        onClick = { importLauncher.launch(arrayOf("application/vnd.android.package-archive", "application/zip", "*/*")) },
-                        enabled = !importBusy
+                        onClick = { importLauncher.launch(arrayOf("application/vnd.android.package-archive", "*/*")) },
+                        enabled = !importBusy && !backupBusy
                     ) {
                         Text(if (importBusy) "Importing…" else "Import APK")
                     }
                 }
                 Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = {
+                            backupCreateLauncher.launch("CloneForge-backup.zip")
+                        },
+                        enabled = !backupBusy && !importBusy
+                    ) {
+                        Text(if (backupBusy) "Working…" else "Backup")
+                    }
+                    TextButton(
+                        onClick = {
+                            backupRestoreLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                        },
+                        enabled = !backupBusy && !importBusy
+                    ) {
+                        Text("Restore")
+                    }
+                }
                 deleteFeedback?.let {
                     Card(
                         Modifier.fillMaxWidth(),
