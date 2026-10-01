@@ -55,7 +55,7 @@ class ApkClonePipeline(
             clonePackage = plan.clonePackage
         )
 
-        rewriteDexFiles(workspace.unpackedDir, plan)
+        val dexRewriteCount = rewriteDexFiles(workspace.unpackedDir, plan)
 
         val output = workspaceManager.outputApk(
             workspace,
@@ -72,12 +72,14 @@ class ApkClonePipeline(
         )
     }
 
-    private fun rewriteDexFiles(unpackedDir: File, plan: ClonePlan) {
+    private fun rewriteDexFiles(unpackedDir: File, plan: ClonePlan): Int {
+        var replacements = 0
         unpackedDir.walkTopDown()
             .filter { it.isFile && it.name.matches(Regex("classes([2-9][0-9]*)?\\\\.dex")) }
             .forEach { dex ->
-                dexPackageRewriter.rewrite(dex, plan.sourcePackage, plan.clonePackage).getOrThrow()
+                replacements += dexPackageRewriter.rewrite(dex, plan.sourcePackage, plan.clonePackage).getOrThrow().replacements
             }
+        return replacements
     }
 
     private fun packUnsignedApk(sourceDir: File, outputApk: File) {
