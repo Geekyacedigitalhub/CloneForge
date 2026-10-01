@@ -20,4 +20,16 @@ object ClonePlanner {
             cloneIndex = cloneIndex
         )
     }
+
+    fun createWithSuffix(sourcePackage: String, cloneName: String, suffix: String, cloneIndex: Int): ClonePlan {
+        require(cloneName.isNotBlank()) { "Clone name cannot be empty." }
+        val clonePackage = PackageIdentity.validate(sourcePackage, suffix).getOrThrow()
+
+        return ClonePlan(
+            sourcePackage = sourcePackage,
+            clonePackage = clonePackage,
+            cloneName = cloneName.trim(),
+            cloneIndex = cloneIndex
+        )
+    }
 }
