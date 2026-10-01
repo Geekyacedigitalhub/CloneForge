@@ -115,6 +115,25 @@ private fun CloneForgeApp(
                         }
                     }
                     Spacer(Modifier.height(8.dp))
+                    val totalLibraryBytes = library.sumOf { record ->
+                        java.io.File(record.apkPath).length()
+                    }
+                    Card(Modifier.fillMaxWidth()) {
+                        Row(
+                            Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Clone storage", style = MaterialTheme.typography.labelLarge)
+                                Text(formatFileSize(totalLibraryBytes), style = MaterialTheme.typography.titleMedium)
+                            }
+                            Text(
+                                "${library.size} clone" + if (library.size == 1) "" else "s",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                     val filteredLibrary = library.filter { record ->
                         val installed = isPackageInstalled(context, record.clonePackage)
                         val matchesFilter = when (libraryFilter) {
