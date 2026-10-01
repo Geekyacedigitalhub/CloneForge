@@ -580,6 +580,14 @@ private fun CloneForgeApp(
                                                 color = integrityTextColor
                                             )
                                         }
+                                        cloneLibrary.integrityDetail(record)?.let { detail ->
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                "Reason: $detail",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        }
                                         if (record.sha256.isNotBlank()) {
                                             Text("SHA-256: " + record.sha256.take(16) + "…", style = MaterialTheme.typography.bodySmall)
                                         }
