@@ -110,7 +110,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         Button(
             onClick = {
                 busy = true
-                status = "Building unsigned clone…"
+                status = "Building and signing clone…"
                 error = null
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
@@ -123,7 +123,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                     }
                     busy = false
                     result.onSuccess { artifact ->
-                        status = "Unsigned APK created: ${artifact.apkFile.name}\nPackage: ${artifact.clonePackage}\nPath: ${artifact.apkFile.absolutePath}"
+                        status = "Signed APK created: ${artifact.apkFile.name}\nPackage: ${artifact.clonePackage}\nPath: ${artifact.apkFile.absolutePath}"
                     }.onFailure { throwable ->
                         status = null
                         error = throwable.message ?: "Clone build failed."
@@ -133,7 +133,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
             enabled = !busy && cloneName.isNotBlank() && packageSuffix.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(if (busy) "Building…" else "Build Unsigned Clone")
+            Text(if (busy) "Building…" else "Build & Sign Clone")
         }
 
         status?.let {
@@ -150,7 +150,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
 
         Spacer(Modifier.height(12.dp))
         Text(
-            "This stage rebuilds the APK without a signing certificate. The next engine stage is APK signing before installation.",
+            "The APK is now rebuilt and signed with CloneForge’s on-device signing key. Installation is the next UI step.",
             style = MaterialTheme.typography.bodySmall
         )
     }
