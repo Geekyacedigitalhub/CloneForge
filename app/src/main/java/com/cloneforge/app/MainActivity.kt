@@ -172,6 +172,7 @@ private fun CloneForgeApp(
             CloneDetailsScreen(
                 record = selectedClone!!,
                 installed = selectedClone!!.clonePackage in installedPackages,
+                contentPadding = padding,
                 onBack = { selectedClone = null },
                 onDelete = {
                     cloneLibrary.delete(selectedClone!!)
@@ -412,6 +413,7 @@ private fun CloneForgeApp(
 private fun CloneDetailsScreen(
     record: CloneRecord,
     installed: Boolean,
+    contentPadding: PaddingValues,
     onBack: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -420,7 +422,13 @@ private fun CloneDetailsScreen(
     val sourceIcon = remember(record.sourcePackage) {
         loadApplicationIcon(context, record.sourcePackage)
     }
+    val scope = rememberCoroutineScope()
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var verifying by remember { mutableStateOf(false) }
+    var verification by remember(record.apkPath) { mutableStateOf<ApkFileVerification?>(null) }
+    val currentSha256 = remember(record.apkPath, record.sha256) {
+        if (record.sha256.isBlank() && file.exists()) sha256(file) else record.sha256
+    }
 
     if (showDeleteDialog) {
         AlertDialog(
@@ -442,6 +450,7 @@ private fun CloneDetailsScreen(
     Column(
         Modifier
             .fillMaxSize()
+            .padding(contentPadding)
             .padding(24.dp)
             .verticalScroll(rememberScrollState())
     ) {
@@ -500,13 +509,83 @@ private fun CloneDetailsScreen(
                 Text("SHA-256", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    if (record.sha256.isBlank()) {
-                        sha256(file)
-                    } else {
-                        record.sha256
-                    },
+                    currentSha256.ifBlank { "SHA-256 unavailable" },
                     style = MaterialTheme.typography.bodySmall
                 )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            if (currentSha256.isNotBlank()) {
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(
+                                    android.content.ClipData.newPlainText("CloneForge SHA-256", currentSha256)
+                                )
+                            }
+                        },
+                        enabled = currentSha256.isNotBlank(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Copy SHA-256")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            verifying = true
+                            verification = null
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    ApkFileVerifier().verify(file)
+                                }
+                                verification = result
+                                verifying = false
+                            }
+                        },
+                        enabled = !verifying && file.exists(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(if (verifying) "Checking…" else "Verify APK")
+                    }
+                }
+                verification?.let { result ->
+                    Spacer(Modifier.height(10.dp))
+                    val verificationText = if (result.verified) {
+                        "APK structure verified"
+                    } else {
+                        "APK verification failed"
+                    }
+                    Text(
+                        verificationText,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (result.verified) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        }
+                    )
+                    Text(
+                        buildString {
+                            append("Manifest: ")
+                            append(if (result.hasManifest) "yes" else "no")
+                            append(" • DEX: ")
+                            append(result.dexCount)
+                            append(" • resources.arsc: ")
+                            append(if (result.hasResources) "yes" else "no")
+                            result.manifestPackage?.let {
+                                append(" • package: ")
+                                append(it)
+                            }
+                            result.error?.let {
+                                append(" • ")
+                                append(it)
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "Use this fingerprint to confirm that a shared APK matches the file received by your team.",
