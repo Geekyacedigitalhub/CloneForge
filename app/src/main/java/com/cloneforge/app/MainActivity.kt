@@ -221,6 +221,10 @@ private fun CloneForgeApp(
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text("Checked: " + report.checked)
                     Text("Healthy: " + report.healthy)
+                    Text(
+                        "Signatures: " + report.signaturesVerified + "/" + report.signaturesChecked + " verified",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     if (report.issues.isNotEmpty()) {
                         Spacer(Modifier.height(12.dp))
                         report.issues.forEach { issue ->
