@@ -16,6 +16,7 @@ class CloneService(private val context: Context) {
     private val pipeline = ApkClonePipeline()
     private val signer = ApkSignerService(context)
     private val preflight = ClonePreflightService()
+    private val library = CloneLibrary(context)
 
     fun buildInstalledAppClone(
         sourcePackage: String,
@@ -40,12 +41,18 @@ class CloneService(private val context: Context) {
             ClonePlanner.createWithSuffix(source.packageName, cloneName, packageSuffix, cloneIndex)
         }
 
+        require(library.findByClonePackage(plan.clonePackage) == null) {
+            "A clone with package ${plan.clonePackage} already exists. Use a different package suffix or delete the existing clone first."
+        }
+
+        val cloneWorkspaceRoot = File(
+            context.filesDir,
+            "clone-builds/${sanitize(plan.clonePackage)}"
+        )
+
         val unsigned = pipeline.buildUnsignedClone(
             sourceApk = File(workspace, "source.apk"),
-            workspaceRoot = File(
-                context.filesDir,
-                "clone-builds/${sanitize(source.packageName)}-$cloneIndex"
-            ),
+            workspaceRoot = cloneWorkspaceRoot,
             plan = plan
         ).getOrThrow()
 
