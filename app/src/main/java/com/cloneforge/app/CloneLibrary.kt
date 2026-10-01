@@ -24,7 +24,9 @@ data class CloneIntegrityIssue(
 data class CloneIntegrityReport(
     val checked: Int,
     val healthy: Int,
-    val issues: List<CloneIntegrityIssue>
+    val issues: List<CloneIntegrityIssue>,
+    val signaturesChecked: Int = 0,
+    val signaturesVerified: Int = 0
 ) {
     val isHealthy: Boolean get() = issues.isEmpty()
 }
@@ -91,6 +93,8 @@ class CloneLibrary(private val context: Context) {
             )
         }
         val issues = mutableListOf<CloneIntegrityIssue>()
+        var signaturesChecked = 0
+        var signaturesVerified = 0
 
         records.forEach { record ->
             val file = File(record.apkPath)
@@ -114,6 +118,7 @@ class CloneLibrary(private val context: Context) {
             }
 
             val signatureVerification = ApkSignatureVerifier().verify(file)
+            signaturesChecked++
             if (!signatureVerification.verified) {
                 issues += CloneIntegrityIssue(
                     record.clonePackage,
@@ -122,6 +127,7 @@ class CloneLibrary(private val context: Context) {
                 )
                 return@forEach
             }
+            signaturesVerified++
 
             if (verification.manifestPackage != record.clonePackage) {
                 issues += CloneIntegrityIssue(
@@ -147,7 +153,9 @@ class CloneLibrary(private val context: Context) {
         return CloneIntegrityReport(
             checked = records.size,
             healthy = records.size - issues.size,
-            issues = issues
+            issues = issues,
+            signaturesChecked = signaturesChecked,
+            signaturesVerified = signaturesVerified
         )
     }
 
