@@ -26,6 +26,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("com.android.tools.build:apksig:8.7.3")
+    implementation("org.smali:dexlib2:2.5.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }
