@@ -9,6 +9,8 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -50,14 +52,38 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun CloneForgeApp(apps: List<InstalledApp>) {
     var selected by remember { mutableStateOf<InstalledApp?>(null) }
+    var library by remember { mutableStateOf(CloneLibrary(LocalContext.current).list()) }
     Scaffold(topBar = { TopAppBar(title = { Text("CloneForge") }) }) { padding ->
         if (selected == null) {
             Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                 Text("Installed Apps", style = MaterialTheme.typography.headlineSmall)
+                if (library.isNotEmpty()) {
+                    Spacer(Modifier.height(20.dp))
+                    Text("Clone Library", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(8.dp))
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                        items(library) { record ->
+                            val file = java.io.File(record.apkPath)
+                            Card(Modifier.fillMaxWidth()) {
+                                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(record.cloneName, style = MaterialTheme.typography.titleMedium)
+                                        Text(record.clonePackage, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    TextButton(onClick = { openCloneInstaller(context = LocalContext.current, apkFile = file) }) { Text("Install") }
+                                    IconButton(onClick = { CloneLibrary(LocalContext.current).delete(record); library = CloneLibrary(LocalContext.current).list() }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete clone")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
                 Spacer(Modifier.height(6.dp))
                 Text("Select an app to prepare it for cloning.")
                 Spacer(Modifier.height(16.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
                     items(apps) { app ->
                         Card(Modifier.fillMaxWidth().clickable { selected = app }) {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
