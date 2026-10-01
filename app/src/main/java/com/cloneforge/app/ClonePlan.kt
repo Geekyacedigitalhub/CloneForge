@@ -10,6 +10,7 @@ data class ClonePlan(
 object ClonePlanner {
     fun create(sourcePackage: String, cloneName: String, cloneIndex: Int): ClonePlan {
         require(cloneName.isNotBlank()) { "Clone name cannot be empty." }
+        require(cloneIndex > 0) { "Clone index must be greater than zero." }
 
         val clonePackage = PackageIdentity.createClonePackage(sourcePackage, cloneIndex)
 
@@ -21,8 +22,15 @@ object ClonePlanner {
         )
     }
 
-    fun createWithSuffix(sourcePackage: String, cloneName: String, suffix: String, cloneIndex: Int): ClonePlan {
+    fun createWithSuffix(
+        sourcePackage: String,
+        cloneName: String,
+        suffix: String,
+        cloneIndex: Int
+    ): ClonePlan {
         require(cloneName.isNotBlank()) { "Clone name cannot be empty." }
+        require(cloneIndex > 0) { "Clone index must be greater than zero." }
+
         val clonePackage = PackageIdentity.validate(sourcePackage, suffix).getOrThrow()
 
         return ClonePlan(
