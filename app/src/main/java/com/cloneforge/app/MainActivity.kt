@@ -5,6 +5,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.setContent
+import androidx.activity.ComponentActivity
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,11 +28,26 @@ import kotlinx.coroutines.withContext
 data class InstalledApp(val label: String, val packageName: String, val versionName: String)
 
 class MainActivity : ComponentActivity() {
+
+    private var refreshLibrary: (() -> Unit)? = null
+
+    override fun onResume() {
+        super.onResume()
+        refreshLibrary?.invoke()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CloneLibrary(this).cleanupStaleRecords()
         val apps = loadLaunchableApps()
-        setContent { MaterialTheme { CloneForgeApp(apps) } }
+        setContent {
+            MaterialTheme {
+                CloneForgeApp(
+                    apps = apps,
+                    onLibraryReady = { refreshLibrary = it }
+                )
+            }
+        }
     }
 
     private fun loadLaunchableApps(): List<InstalledApp> {
@@ -49,11 +66,23 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun CloneForgeApp(apps: List<InstalledApp>) {
+private fun CloneForgeApp(
+    apps: List<InstalledApp>,
+    onLibraryReady: (@MainThread () -> Unit) -> Unit
+) {
     val context = LocalContext.current
     var selected by remember { mutableStateOf<InstalledApp?>(null) }
     val cloneLibrary = remember { CloneLibrary(context) }
     var library by remember { mutableStateOf(cloneLibrary.list()) }
+
+    fun refreshLibrary() {
+        cloneLibrary.cleanupStaleRecords()
+        library = cloneLibrary.list()
+    }
+
+    LaunchedEffect(Unit) {
+        onLibraryReady { refreshLibrary() }
+    }
     Scaffold(topBar = { TopAppBar(title = { Text("CloneForge") }) }) { padding ->
         if (selected == null) {
             Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
