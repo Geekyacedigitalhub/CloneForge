@@ -97,6 +97,9 @@ class CloneService(private val context: Context) {
         }
     }
 
+    fun nextAvailableCloneIndexForUi(sourcePackage: String): Int =
+        nextAvailableCloneIndex(sourcePackage)
+
     private fun nextAvailableCloneIndex(sourcePackage: String): Int {
         var index = 1
         while (true) {
