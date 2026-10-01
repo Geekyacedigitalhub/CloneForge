@@ -843,14 +843,16 @@ private fun CloneDetailsScreen(
                             scope.launch {
                                 val result = withContext(Dispatchers.IO) {
                                     runCatching {
-                                        CloneLibrary(context).checkIntegrity(record)
+                                        val report = CloneLibrary(context).checkIntegrity(record)
+                                        val apkVerification = ApkFileVerifier().verify(file)
+                                        report to apkVerification
                                     }
                                 }
-                                result.onSuccess { report ->
+                                result.onSuccess { (report, apkVerification) ->
                                     integrityVerification = report
-                                    verification = ApkFileVerifier().verify(file)
+                                    verification = apkVerification
                                     if (file.exists()) {
-                                        displayedSha256 = withContext(Dispatchers.IO) { sha256(file) }
+                                        displayedSha256 = sha256(file)
                                     }
                                 }
                                 result.onFailure { throwable ->
