@@ -318,13 +318,26 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                     Text("Compatibility check", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(6.dp))
                     Text(report.compatibility.title)
-                    report.compatibility.issues.forEach { issue ->
-                        Spacer(Modifier.height(6.dp))
-                        Text("• $issue", color = MaterialTheme.colorScheme.error)
-                    }
-                    report.compatibility.warnings.forEach { warning ->
-                        Spacer(Modifier.height(6.dp))
-                        Text("• $warning", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "${report.compatibility.issues.size} blocking issue(s) • ${report.compatibility.warnings.size} warning(s)",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 180.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        report.compatibility.issues.forEach { issue ->
+                            Text("• $issue", color = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.height(6.dp))
+                        }
+                        report.compatibility.warnings.forEach { warning ->
+                            Text("• $warning", style = MaterialTheme.typography.bodySmall)
+                            Spacer(Modifier.height(6.dp))
+                        }
                     }
                 }
             }
