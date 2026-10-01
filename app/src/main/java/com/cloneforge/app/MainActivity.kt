@@ -727,6 +727,7 @@ private fun CloneDetailsScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var verifying by remember { mutableStateOf(false) }
     var verification by remember(record.apkPath) { mutableStateOf<ApkFileVerification?>(null) }
+    var integrityVerification by remember(record.apkPath) { mutableStateOf<CloneIntegrityReport?>(null) }
     val currentSha256 = remember(record.apkPath, record.sha256) {
         if (record.sha256.isBlank() && file.exists()) sha256(file) else record.sha256
     }
@@ -838,9 +839,18 @@ private fun CloneDetailsScreen(
                             verification = null
                             scope.launch {
                                 val result = withContext(Dispatchers.IO) {
-                                    ApkFileVerifier().verify(file)
+                                    runCatching {
+                                        CloneLibrary(context).checkIntegrity(record)
+                                    }
                                 }
-                                verification = result
+                                result.onSuccess { report ->
+                                    integrityVerification = report
+                                    verification = ApkFileVerifier().verify(file)
+                                }
+                                result.onFailure {
+                                    integrityVerification = null
+                                    verification = null
+                                }
                                 verifying = false
                             }
                         },
@@ -852,10 +862,11 @@ private fun CloneDetailsScreen(
                 }
                 verification?.let { result ->
                     Spacer(Modifier.height(10.dp))
-                    val verificationText = if (result.verified) {
-                        "APK structure verified"
-                    } else {
-                        "APK verification failed"
+                    val verificationText = when {
+                        integrityVerification?.isHealthy == true -> "Clone integrity verified"
+                        integrityVerification != null -> "Clone integrity check failed"
+                        result.verified -> "APK structure verified"
+                        else -> "APK verification failed"
                     }
                     Text(
                         verificationText,
