@@ -411,7 +411,32 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         TextButton(onClick = onBack, enabled = !busy) { Text("← Back") }
         Spacer(Modifier.height(8.dp))
         Text("Clone Setup", style = MaterialTheme.typography.headlineMedium)
-        Text("${app.label} • ${app.packageName}")
+        Spacer(Modifier.height(12.dp))
+        Card(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Image(
+                    bitmap = app.icon.asImageBitmap(),
+                    contentDescription = app.label,
+                    modifier = Modifier.size(64.dp)
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(app.label, style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        app.packageName,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "Version ${app.versionName}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(24.dp))
         OutlinedTextField(
             value = cloneName,
