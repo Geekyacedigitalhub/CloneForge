@@ -60,7 +60,8 @@ class CloneLibrary(private val context: Context) {
             return cached.third
         }
 
-        return cached?.third ?: "Integrity: Checking…"
+        integrityDetails.remove(record.apkPath)
+        return "Integrity: Checking…"
     }
 
     fun verifyIntegrityLabel(record: CloneRecord): String {
@@ -74,6 +75,7 @@ class CloneLibrary(private val context: Context) {
             return cached.third
         }
 
+        integrityDetails.remove(record.apkPath)
         val label = if (sha256(file).equals(record.sha256, ignoreCase = true)) {
             "Integrity: Verified"
         } else {
