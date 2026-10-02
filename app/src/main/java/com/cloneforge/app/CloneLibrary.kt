@@ -314,11 +314,13 @@ class CloneLibrary(private val context: Context) {
         list().firstOrNull { it.clonePackage == clonePackage }
 
     fun add(record: CloneRecord) {
-        val records = list().filterNot {
-            it.apkPath == record.apkPath || it.clonePackage == record.clonePackage
-        } + record
-        writeRecords(records)
-        integrityCache.remove(record.apkPath)
+        synchronized(metadataLock) {
+            val records = list().filterNot {
+                it.apkPath == record.apkPath || it.clonePackage == record.clonePackage
+            } + record
+            writeRecords(records)
+            integrityCache.remove(record.apkPath)
+        }
     }
 
     fun importApk(uri: Uri): ImportedClone {
@@ -628,18 +630,20 @@ class CloneLibrary(private val context: Context) {
 
 
     fun delete(record: CloneRecord): Boolean {
-        val apkFile = File(record.apkPath)
-        val deleted = !apkFile.exists() || apkFile.delete()
+        synchronized(metadataLock) {
+            val apkFile = File(record.apkPath)
+            val deleted = !apkFile.exists() || apkFile.delete()
 
-        val workspace = File(buildRoot, sanitize(record.clonePackage))
-        workspace.deleteRecursively()
+            val workspace = File(buildRoot, sanitize(record.clonePackage))
+            workspace.deleteRecursively()
 
-        val remaining = list().filterNot {
-            it.apkPath == record.apkPath || it.clonePackage == record.clonePackage
+            val remaining = list().filterNot {
+                it.apkPath == record.apkPath || it.clonePackage == record.clonePackage
+            }
+            writeRecords(remaining)
+            integrityCache.remove(record.apkPath)
+            return deleted
         }
-        writeRecords(remaining)
-        integrityCache.remove(record.apkPath)
-        return deleted
     }
 
     fun cleanupOrphanedBuildWorkspaces() {
@@ -668,22 +672,24 @@ class CloneLibrary(private val context: Context) {
     }
 
     fun cleanupStaleRecords() {
-        if (!metadataFile.exists()) return
+        synchronized(metadataLock) {
+            if (!metadataFile.exists()) return
 
-        val validRecords = list()
-        val validPackages = validRecords.mapTo(mutableSetOf()) { it.clonePackage }
+            val validRecords = list()
+            val validPackages = validRecords.mapTo(mutableSetOf()) { it.clonePackage }
 
-        val array = JSONArray(metadataFile.readText())
-        for (i in 0 until array.length()) {
-            val item = array.getJSONObject(i)
-            val clonePackage = item.optString("clonePackage")
-            if (clonePackage.isNotBlank() && clonePackage !in validPackages) {
-                File(item.optString("apkPath")).delete()
-                File(buildRoot, sanitize(clonePackage)).deleteRecursively()
+            val array = JSONArray(metadataFile.readText())
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val clonePackage = item.optString("clonePackage")
+                if (clonePackage.isNotBlank() && clonePackage !in validPackages) {
+                    File(item.optString("apkPath")).delete()
+                    File(buildRoot, sanitize(clonePackage)).deleteRecursively()
+                }
             }
-        }
 
-        writeRecords(validRecords)
+            writeRecords(validRecords)
+        }
     }
 
     private fun readStoredRecords(): List<CloneRecord> {
