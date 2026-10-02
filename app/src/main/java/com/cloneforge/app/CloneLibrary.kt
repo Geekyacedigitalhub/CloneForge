@@ -27,7 +27,8 @@ data class CloneIntegrityReport(
     val healthy: Int,
     val issues: List<CloneIntegrityIssue>,
     val signaturesChecked: Int = 0,
-    val signaturesVerified: Int = 0
+    val signaturesVerified: Int = 0,
+    val checksumBaselinesCreated: Int = 0
 ) {
     val isHealthy: Boolean get() = issues.isEmpty()
 }
@@ -132,6 +133,7 @@ class CloneLibrary(private val context: Context) {
         val issues = mutableListOf<CloneIntegrityIssue>()
         var signaturesChecked = 0
         var signaturesVerified = 0
+        var checksumBaselinesCreated = 0
 
         records.forEach { record ->
             val file = File(record.apkPath)
@@ -183,7 +185,8 @@ class CloneLibrary(private val context: Context) {
             val actual = calculateSha256(file)
             if (record.sha256.isBlank()) {
                 updateStoredChecksum(record, actual)
-                cacheIntegrityLabel(record, file, "Integrity: Verified")
+                checksumBaselinesCreated++
+                cacheIntegrityLabel(record, file, "Integrity: Verified", "SHA-256 baseline created during this verification.")
                 return@forEach
             }
             if (!actual.equals(record.sha256, ignoreCase = true)) {
@@ -204,7 +207,8 @@ class CloneLibrary(private val context: Context) {
             healthy = records.size - issues.size,
             issues = issues,
             signaturesChecked = signaturesChecked,
-            signaturesVerified = signaturesVerified
+            signaturesVerified = signaturesVerified,
+            checksumBaselinesCreated = checksumBaselinesCreated
         )
     }
 
@@ -259,13 +263,14 @@ class CloneLibrary(private val context: Context) {
         val actual = calculateSha256(file)
         if (record.sha256.isBlank()) {
             updateStoredChecksum(record, actual)
-            cacheIntegrityLabel(record, file, "Integrity: Verified")
+            cacheIntegrityLabel(record, file, "Integrity: Verified", "SHA-256 baseline created during this verification.")
             return CloneIntegrityReport(
                 checked = 1,
                 healthy = 1,
                 issues = emptyList(),
                 signaturesChecked = 1,
-                signaturesVerified = 1
+                signaturesVerified = 1,
+                checksumBaselinesCreated = 1
             )
         }
         if (!actual.equals(record.sha256, ignoreCase = true)) {
