@@ -17,7 +17,7 @@ CloneForge does not claim arbitrary APK compatibility; protections, DRM, Google 
 ## Local validation
 The project includes a small real Android fixture APK used by the JVM pipeline integration test.
 
-From the project root, with Gradle and the Android SDK available locally:
+From the project root, with Gradle 8.9+ and the Android SDK available locally:
 
 ```bash
 gradle :app:testDebugUnitTest
