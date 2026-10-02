@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.nio.file.Files
 import java.util.zip.ZipFile
 
 class ApkClonePipelineTest {
@@ -15,7 +16,7 @@ class ApkClonePipelineTest {
         val sourceApk = File(fixturePath)
         assertTrue("Fixture APK must exist: $fixturePath", sourceApk.isFile)
 
-        val workspaceRoot = createTempDir(prefix = "cloneforge-pipeline-")
+        val workspaceRoot = Files.createTempDirectory("cloneforge-pipeline-").toFile()
         try {
             val plan = ClonePlan(
                 sourcePackage = "com.cloneforge.fixture",
