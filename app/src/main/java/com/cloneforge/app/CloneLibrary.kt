@@ -180,24 +180,29 @@ class CloneLibrary(private val context: Context) {
                 return@forEach
             }
 
-            if (record.sha256.isNotBlank()) {
-                val actual = calculateSha256(file)
-                if (!actual.equals(record.sha256, ignoreCase = true)) {
-                    cacheIntegrityLabel(record, file, "Integrity: Checksum mismatch", "SHA-256 checksum does not match the library record.")
-                    issues += CloneIntegrityIssue(
-                        record.clonePackage,
-                        record.cloneName,
-                        "SHA-256 checksum does not match the library record."
-                    )
-                    return@forEach
-                }
+            if (record.sha256.isBlank()) {
+                val message = "No stored SHA-256 checksum is available for this clone."
+                cacheIntegrityLabel(record, file, "Integrity: Not checked", message)
+                issues += CloneIntegrityIssue(
+                    record.clonePackage,
+                    record.cloneName,
+                    message
+                )
+                return@forEach
             }
 
-            if (record.sha256.isNotBlank()) {
-                cacheIntegrityLabel(record, file, "Integrity: Verified")
-            } else {
-                cacheIntegrityLabel(record, file, "Integrity: Not checked")
+            val actual = calculateSha256(file)
+            if (!actual.equals(record.sha256, ignoreCase = true)) {
+                cacheIntegrityLabel(record, file, "Integrity: Checksum mismatch", "SHA-256 checksum does not match the library record.")
+                issues += CloneIntegrityIssue(
+                    record.clonePackage,
+                    record.cloneName,
+                    "SHA-256 checksum does not match the library record."
+                )
+                return@forEach
             }
+
+            cacheIntegrityLabel(record, file, "Integrity: Verified")
         }
 
         return CloneIntegrityReport(
@@ -257,23 +262,31 @@ class CloneLibrary(private val context: Context) {
             )
         }
 
-        if (record.sha256.isNotBlank()) {
-            val actual = calculateSha256(file)
-            if (!actual.equals(record.sha256, ignoreCase = true)) {
-                val message = "SHA-256 checksum does not match the library record."
-                cacheIntegrityLabel(record, file, "Integrity: Checksum mismatch", message)
-                return CloneIntegrityReport(
-                    checked = 1,
-                    healthy = 0,
-                    issues = listOf(CloneIntegrityIssue(record.clonePackage, record.cloneName, message)),
-                    signaturesChecked = 1,
-                    signaturesVerified = 1
-                )
-            }
-            cacheIntegrityLabel(record, file, "Integrity: Verified")
-        } else {
-            cacheIntegrityLabel(record, file, "Integrity: Not checked")
+        if (record.sha256.isBlank()) {
+            val message = "No stored SHA-256 checksum is available for this clone."
+            cacheIntegrityLabel(record, file, "Integrity: Not checked", message)
+            return CloneIntegrityReport(
+                checked = 1,
+                healthy = 0,
+                issues = listOf(CloneIntegrityIssue(record.clonePackage, record.cloneName, message)),
+                signaturesChecked = 1,
+                signaturesVerified = 1
+            )
         }
+
+        val actual = calculateSha256(file)
+        if (!actual.equals(record.sha256, ignoreCase = true)) {
+            val message = "SHA-256 checksum does not match the library record."
+            cacheIntegrityLabel(record, file, "Integrity: Checksum mismatch", message)
+            return CloneIntegrityReport(
+                checked = 1,
+                healthy = 0,
+                issues = listOf(CloneIntegrityIssue(record.clonePackage, record.cloneName, message)),
+                signaturesChecked = 1,
+                signaturesVerified = 1
+            )
+        }
+        cacheIntegrityLabel(record, file, "Integrity: Verified")
 
         return CloneIntegrityReport(
             checked = 1,
