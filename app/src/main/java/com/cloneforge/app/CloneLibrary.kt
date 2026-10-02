@@ -587,38 +587,82 @@ class CloneLibrary(private val context: Context) {
                 )
             }
 
-            // Phase 2: only after every clone is valid, replace existing records.
-            for (restore in prepared) {
-                val item = restore.item
-                val destinationDir = File(
-                    buildRoot,
-                    "imports/" + sanitize(restore.packageName)
-                ).apply { mkdirs() }
-                val destination = File(
-                    destinationDir,
-                    sanitize(item.optString("cloneName", "Restored Clone")) + ".apk"
-                )
-
-                val existing = findByClonePackage(restore.packageName)
-                existing?.let {
-                    if (File(it.apkPath).absolutePath != destination.absolutePath) {
-                        File(it.apkPath).delete()
+            // Phase 2: stage all replacements before changing the library metadata.
+            synchronized(metadataLock) {
+                val staged = mutableListOf<Pair<File, File>>()
+                val backups = mutableListOf<Pair<File, File>>()
+                try {
+                    for (restore in prepared) {
+                        val item = restore.item
+                        val destinationDir = File(
+                            buildRoot,
+                            "imports/" + sanitize(restore.packageName)
+                        ).apply { mkdirs() }
+                        val destination = File(
+                            destinationDir,
+                            sanitize(item.optString("cloneName", "Restored Clone")) + ".apk"
+                        )
+                        val stagedFile = File(
+                            restoreRoot,
+                            "staged-" + sanitize(restore.packageName) + ".apk"
+                        )
+                        restore.sourceApk.copyTo(stagedFile, overwrite = true)
+                        staged += stagedFile to destination
                     }
-                    File(buildRoot, sanitize(it.clonePackage)).deleteRecursively()
+
+                    for ((_, destination) in staged) {
+                        if (destination.exists()) {
+                            val backup = File(
+                                restoreRoot,
+                                "backup-" + backups.size + ".apk"
+                            )
+                            destination.copyTo(backup, overwrite = true)
+                            backups += destination to backup
+                        }
+                    }
+
+                    for ((stagedFile, destination) in staged) {
+                        destination.parentFile?.mkdirs()
+                        stagedFile.copyTo(destination, overwrite = true)
+                    }
+
+                    val existingRecords = readStoredRecords()
+                    val restoredPackages = prepared.mapTo(mutableSetOf()) { it.packageName }
+                    val updatedRecords = existingRecords.filterNot {
+                        it.clonePackage in restoredPackages
+                    }.toMutableList()
+
+                    prepared.forEach { restore ->
+                        val item = restore.item
+                        val destination = File(
+                            buildRoot,
+                            "imports/" + sanitize(restore.packageName) + "/" +
+                                sanitize(item.optString("cloneName", "Restored Clone")) + ".apk"
+                        )
+                        updatedRecords += CloneRecord(
+                            cloneName = item.optString("cloneName", "Restored Clone"),
+                            sourcePackage = item.optString("sourcePackage", "Restored Backup"),
+                            clonePackage = restore.packageName,
+                            apkPath = destination.absolutePath,
+                            createdAt = item.optLong("createdAt", System.currentTimeMillis()),
+                            sha256 = restore.actualSha256
+                        )
+                    }
+
+                    writeRecords(updatedRecords)
+
+                    prepared.forEach { restore ->
+                        File(buildRoot, sanitize(restore.packageName)).deleteRecursively()
+                    }
+                } catch (throwable: Throwable) {
+                    for ((destination, backup) in backups) {
+                        runCatching { backup.copyTo(destination, overwrite = true) }
+                    }
+                    throw throwable
+                } finally {
+                    staged.forEach { (stagedFile, _) -> stagedFile.delete() }
+                    backups.forEach { (_, backup) -> backup.delete() }
                 }
-
-                restore.sourceApk.copyTo(destination, overwrite = true)
-
-                add(
-                    CloneRecord(
-                        cloneName = item.optString("cloneName", "Restored Clone"),
-                        sourcePackage = item.optString("sourcePackage", "Restored Backup"),
-                        clonePackage = restore.packageName,
-                        apkPath = destination.absolutePath,
-                        createdAt = item.optLong("createdAt", System.currentTimeMillis()),
-                        sha256 = restore.actualSha256
-                    )
-                )
             }
 
             integrityCache.clear()
