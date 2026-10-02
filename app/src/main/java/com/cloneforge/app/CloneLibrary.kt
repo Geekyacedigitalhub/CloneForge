@@ -814,17 +814,22 @@ class CloneLibrary(private val context: Context) {
         val temporary = File(metadataFile.parentFile, metadataFile.name + ".tmp")
         temporary.writeText(array.toString())
 
-        if (!temporary.renameTo(metadataFile)) {
-            // Some filesystems cannot replace an existing file with renameTo().
-            // Delete only after the complete temporary file has been written.
-            if (metadataFile.exists() && !metadataFile.delete()) {
-                temporary.delete()
-                error("Unable to replace clone library metadata.")
-            }
-            if (!temporary.renameTo(metadataFile)) {
-                temporary.delete()
-                error("Unable to commit clone library metadata.")
-            }
+        try {
+            java.nio.file.Files.move(
+                temporary.toPath(),
+                metadataFile.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE
+            )
+        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+            java.nio.file.Files.move(
+                temporary.toPath(),
+                metadataFile.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+            )
+        } catch (throwable: Throwable) {
+            temporary.delete()
+            throw throwable
         }
     }
 }
