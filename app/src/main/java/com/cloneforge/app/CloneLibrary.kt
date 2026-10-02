@@ -663,6 +663,12 @@ class CloneLibrary(private val context: Context) {
                     if (metadataCommitted) {
                         runCatching { writeRecords(existingRecords) }
                     }
+                    val backedUpPaths = backups.mapTo(mutableSetOf()) { it.first.absolutePath }
+                    staged.forEach { (_, destination) ->
+                        if (destination.absolutePath !in backedUpPaths) {
+                            runCatching { destination.delete() }
+                        }
+                    }
                     for ((destination, backup) in backups) {
                         runCatching { backup.copyTo(destination, overwrite = true) }
                     }
