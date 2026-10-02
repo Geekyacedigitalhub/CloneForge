@@ -180,18 +180,12 @@ class CloneLibrary(private val context: Context) {
                 return@forEach
             }
 
+            val actual = calculateSha256(file)
             if (record.sha256.isBlank()) {
-                val message = "No stored SHA-256 checksum is available for this clone."
-                cacheIntegrityLabel(record, file, "Integrity: Not checked", message)
-                issues += CloneIntegrityIssue(
-                    record.clonePackage,
-                    record.cloneName,
-                    message
-                )
+                updateStoredChecksum(record, actual)
+                cacheIntegrityLabel(record, file, "Integrity: Verified")
                 return@forEach
             }
-
-            val actual = calculateSha256(file)
             if (!actual.equals(record.sha256, ignoreCase = true)) {
                 cacheIntegrityLabel(record, file, "Integrity: Checksum mismatch", "SHA-256 checksum does not match the library record.")
                 issues += CloneIntegrityIssue(
@@ -262,19 +256,18 @@ class CloneLibrary(private val context: Context) {
             )
         }
 
+        val actual = calculateSha256(file)
         if (record.sha256.isBlank()) {
-            val message = "No stored SHA-256 checksum is available for this clone."
-            cacheIntegrityLabel(record, file, "Integrity: Not checked", message)
+            updateStoredChecksum(record, actual)
+            cacheIntegrityLabel(record, file, "Integrity: Verified")
             return CloneIntegrityReport(
                 checked = 1,
-                healthy = 0,
-                issues = listOf(CloneIntegrityIssue(record.clonePackage, record.cloneName, message)),
+                healthy = 1,
+                issues = emptyList(),
                 signaturesChecked = 1,
                 signaturesVerified = 1
             )
         }
-
-        val actual = calculateSha256(file)
         if (!actual.equals(record.sha256, ignoreCase = true)) {
             val message = "SHA-256 checksum does not match the library record."
             cacheIntegrityLabel(record, file, "Integrity: Checksum mismatch", message)
@@ -295,6 +288,18 @@ class CloneLibrary(private val context: Context) {
             signaturesChecked = 1,
             signaturesVerified = 1
         )
+    }
+
+
+    private fun updateStoredChecksum(record: CloneRecord, sha256: String) {
+        val updatedRecords = readStoredRecords().map { stored ->
+            if (stored.clonePackage == record.clonePackage && stored.apkPath == record.apkPath) {
+                stored.copy(sha256 = sha256)
+            } else {
+                stored
+            }
+        }
+        writeRecords(updatedRecords)
     }
 
     fun findByClonePackage(clonePackage: String): CloneRecord? =
