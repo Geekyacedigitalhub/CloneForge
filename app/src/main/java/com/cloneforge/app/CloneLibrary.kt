@@ -49,6 +49,7 @@ class CloneLibrary(private val context: Context) {
     private val buildRoot get() = File(context.filesDir, "clone-builds")
     private val integrityCache = ConcurrentHashMap<String, Triple<Long, Long, String>>()
     private val integrityDetails = ConcurrentHashMap<String, String>()
+    private val metadataLock = Any()
 
     fun integrityLabel(record: CloneRecord): String {
         val file = File(record.apkPath)
@@ -297,14 +298,16 @@ class CloneLibrary(private val context: Context) {
 
 
     private fun updateStoredChecksum(record: CloneRecord, sha256: String) {
-        val updatedRecords = readStoredRecords().map { stored ->
-            if (stored.clonePackage == record.clonePackage && stored.apkPath == record.apkPath) {
-                stored.copy(sha256 = sha256)
-            } else {
-                stored
+        synchronized(metadataLock) {
+            val updatedRecords = readStoredRecords().map { stored ->
+                if (stored.clonePackage == record.clonePackage && stored.apkPath == record.apkPath) {
+                    stored.copy(sha256 = sha256)
+                } else {
+                    stored
+                }
             }
+            writeRecords(updatedRecords)
         }
-        writeRecords(updatedRecords)
     }
 
     fun findByClonePackage(clonePackage: String): CloneRecord? =
