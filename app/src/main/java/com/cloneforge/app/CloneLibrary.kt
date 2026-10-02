@@ -811,6 +811,20 @@ class CloneLibrary(private val context: Context) {
                 put("sha256", it.sha256)
             })
         }
-        metadataFile.writeText(array.toString())
+        val temporary = File(metadataFile.parentFile, metadataFile.name + ".tmp")
+        temporary.writeText(array.toString())
+
+        if (!temporary.renameTo(metadataFile)) {
+            // Some filesystems cannot replace an existing file with renameTo().
+            // Delete only after the complete temporary file has been written.
+            if (metadataFile.exists() && !metadataFile.delete()) {
+                temporary.delete()
+                error("Unable to replace clone library metadata.")
+            }
+            if (!temporary.renameTo(metadataFile)) {
+                temporary.delete()
+                error("Unable to commit clone library metadata.")
+            }
+        }
     }
 }
