@@ -1,0 +1,2 @@
+com.cloneforge.fixture
+com.cloneforge.fixture.FixtureActivity
