@@ -846,15 +846,14 @@ private fun CloneDetailsScreen(
                                     runCatching {
                                         val report = CloneLibrary(context).checkIntegrity(record)
                                         val apkVerification = ApkFileVerifier().verify(file)
-                                        report to apkVerification
+                                        val currentSha256 = if (file.exists()) sha256(file) else ""
+                                        Triple(report, apkVerification, currentSha256)
                                     }
                                 }
-                                result.onSuccess { (report, apkVerification) ->
+                                result.onSuccess { (report, apkVerification, currentSha256) ->
                                     integrityVerification = report
                                     verification = apkVerification
-                                    if (file.exists()) {
-                                        displayedSha256 = sha256(file)
-                                    }
+                                    displayedSha256 = currentSha256
                                 }
                                 result.onFailure { throwable ->
                                     integrityVerification = null
