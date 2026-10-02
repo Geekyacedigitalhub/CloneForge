@@ -38,6 +38,23 @@ data class ImportedClone(
     val replacedExisting: Boolean
 )
 
+internal object CloneBackupPathValidator {
+    fun normalizeEntryName(name: String): String {
+        val safeName = name.replace('\\\\', '/')
+        require(safeName.isNotBlank() && !safeName.startsWith("/")) {
+            "Backup contains an unsafe path."
+        }
+        require(!safeName.split('/').any { it == ".." }) {
+            "Backup contains an unsafe path."
+        }
+        return safeName
+    }
+
+    fun isApkEntry(name: String): Boolean =
+        name.startsWith("apks/") &&
+            name.substringAfter("apks/").matches(Regex("[0-9]+\\\\.apk"))
+}
+
 class CloneLibrary(private val context: Context) {
     companion object {
         private const val MAX_BACKUP_ENTRIES = 512
@@ -471,10 +488,7 @@ class CloneLibrary(private val context: Context) {
                             "Backup contains too many files."
                         }
 
-                        val safeName = entry.name.replace('\\', '/')
-                        require(safeName.isNotBlank() && !safeName.startsWith("/")) {
-                            "Backup contains an unsafe path."
-                        }
+                        val safeName = CloneBackupPathValidator.normalizeEntryName(entry.name)
 
                         if (entry.isDirectory) {
                             zip.closeEntry()
@@ -487,8 +501,7 @@ class CloneLibrary(private val context: Context) {
 
                         val destination = when {
                             safeName == "cloneforge-backup.json" -> metadataFile
-                            safeName.startsWith("apks/") &&
-                                safeName.substringAfter("apks/").matches(Regex("[0-9]+\\.apk")) -> {
+                            CloneBackupPathValidator.isApkEntry(safeName) -> {
                                 File(restoreRoot, safeName.substringAfter("apks/"))
                             }
                             else -> error("Backup contains an unsupported or unsafe entry.")
@@ -540,11 +553,10 @@ class CloneLibrary(private val context: Context) {
             // Phase 1: validate the complete backup without modifying the library.
             for (i in 0 until clones.length()) {
                 val item = clones.getJSONObject(i)
-                val entryName = item.getString("apkEntry").replace('\\', '/')
-                require(
-                    entryName.startsWith("apks/") &&
-                        entryName.substringAfter("apks/").matches(Regex("[0-9]+\\.apk"))
-                ) { "Backup contains an invalid APK reference." }
+                val entryName = CloneBackupPathValidator.normalizeEntryName(item.getString("apkEntry"))
+                require(CloneBackupPathValidator.isApkEntry(entryName)) {
+                    "Backup contains an invalid APK reference."
+                }
                 require(referencedEntries.add(entryName)) {
                     "Backup contains duplicate APK references."
                 }
