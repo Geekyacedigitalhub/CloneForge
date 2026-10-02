@@ -341,6 +341,7 @@ private fun CloneForgeApp(
                     integrityBusy = false
                     result.onSuccess { report ->
                         integrityReport = report
+                        library = cloneLibrary.list()
                         deleteFeedback = if (report.isHealthy) {
                             "Integrity check passed: " + report.healthy + " clone(s) healthy."
                         } else {
