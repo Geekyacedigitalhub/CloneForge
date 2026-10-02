@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.util.zip.ZipFile
 
 class ApkClonePipelineTest {
 
@@ -36,6 +37,14 @@ class ApkClonePipelineTest {
             assertEquals(plan.sourcePackage, artifact.sourcePackage)
             assertEquals(plan.clonePackage, artifact.clonePackage)
             assertTrue(artifact.manifestChanged)
+
+            ZipFile(artifact.apkFile).use { zip ->
+                val reference = zip.getEntry("assets/package-reference.txt")
+                    ?: error("Fixture text reference is missing from the clone.")
+                val text = zip.getInputStream(reference).bufferedReader().use { it.readText() }
+                assertTrue(text.contains(plan.clonePackage))
+                assertTrue(!text.contains(plan.sourcePackage))
+            }
 
             val verification = ApkCloneVerifier().verify(
                 artifact.apkFile,
