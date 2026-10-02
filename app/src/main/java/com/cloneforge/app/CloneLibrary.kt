@@ -589,8 +589,12 @@ class CloneLibrary(private val context: Context) {
 
             // Phase 2: stage all replacements before changing the library metadata.
             synchronized(metadataLock) {
+                val existingRecords = readStoredRecords()
+                val restoredPackages = prepared.mapTo(mutableSetOf()) { it.packageName }
+                val oldRecords = existingRecords.filter { it.clonePackage in restoredPackages }
                 val staged = mutableListOf<Pair<File, File>>()
                 val backups = mutableListOf<Pair<File, File>>()
+                var metadataCommitted = false
                 try {
                     for (restore in prepared) {
                         val item = restore.item
@@ -610,15 +614,13 @@ class CloneLibrary(private val context: Context) {
                         staged += stagedFile to destination
                     }
 
-                    for ((_, destination) in staged) {
-                        if (destination.exists()) {
-                            val backup = File(
-                                restoreRoot,
-                                "backup-" + backups.size + ".apk"
-                            )
-                            destination.copyTo(backup, overwrite = true)
-                            backups += destination to backup
-                        }
+                    val pathsToBackup = (oldRecords.map { File(it.apkPath) } + staged.map { it.second })
+                        .filter { it.exists() && it.isFile }
+                        .distinctBy { it.absolutePath }
+                    pathsToBackup.forEachIndexed { index, source ->
+                        val backup = File(restoreRoot, "backup-$index.apk")
+                        source.copyTo(backup, overwrite = true)
+                        backups += source to backup
                     }
 
                     for ((stagedFile, destination) in staged) {
@@ -626,8 +628,6 @@ class CloneLibrary(private val context: Context) {
                         stagedFile.copyTo(destination, overwrite = true)
                     }
 
-                    val existingRecords = readStoredRecords()
-                    val restoredPackages = prepared.mapTo(mutableSetOf()) { it.packageName }
                     val updatedRecords = existingRecords.filterNot {
                         it.clonePackage in restoredPackages
                     }.toMutableList()
@@ -650,11 +650,19 @@ class CloneLibrary(private val context: Context) {
                     }
 
                     writeRecords(updatedRecords)
+                    metadataCommitted = true
 
-                    prepared.forEach { restore ->
-                        File(buildRoot, sanitize(restore.packageName)).deleteRecursively()
+                    oldRecords.forEach { oldRecord ->
+                        val oldFile = File(oldRecord.apkPath)
+                        if (oldFile.absolutePath !in staged.map { it.second.absolutePath }) {
+                            oldFile.delete()
+                        }
+                        File(buildRoot, sanitize(oldRecord.clonePackage)).deleteRecursively()
                     }
                 } catch (throwable: Throwable) {
+                    if (metadataCommitted) {
+                        runCatching { writeRecords(existingRecords) }
+                    }
                     for ((destination, backup) in backups) {
                         runCatching { backup.copyTo(destination, overwrite = true) }
                     }
