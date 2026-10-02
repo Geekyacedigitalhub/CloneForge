@@ -227,6 +227,14 @@ private fun CloneForgeApp(
                         "Signatures: " + report.signaturesVerified + "/" + report.signaturesChecked + " verified",
                         style = MaterialTheme.typography.bodySmall
                     )
+                    if (report.checksumBaselinesCreated > 0) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "SHA-256 baselines created: " + report.checksumBaselinesCreated + " (legacy clone records)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     if (report.issues.isNotEmpty()) {
                         Spacer(Modifier.height(12.dp))
                         report.issues.forEach { issue ->
