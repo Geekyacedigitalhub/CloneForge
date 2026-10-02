@@ -17,16 +17,16 @@ CloneForge does not claim arbitrary APK compatibility; protections, DRM, Google 
 ## Local validation
 The project includes a small real Android fixture APK used by the JVM pipeline integration test.
 
-From the project root, with the Android/Gradle dependencies available locally:
+From the project root, with Gradle and the Android SDK available locally:
 
 ```bash
-./gradlew :app:testDebugUnitTest
+gradle :app:testDebugUnitTest
 ```
 
-On Windows:
+On Windows PowerShell:
 
 ```powershell
-.\\gradlew.bat :app:testDebugUnitTest
+gradle :app:testDebugUnitTest
 ```
 
 The test task builds `:fixture:assembleDebug` automatically and then exercises manifest, DEX, text-reference rewriting, repacking, and final APK verification.
