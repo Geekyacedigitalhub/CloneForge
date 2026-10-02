@@ -30,3 +30,27 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }
+
+tasks.withType<Test>().configureEach {
+    dependsOn(":fixture:assembleDebug")
+    systemProperty(
+        "cloneforge.fixtureApk",
+        project(":fixture").layout.buildDirectory
+            .file("outputs/apk/debug/fixture-debug.apk")
+            .get()
+            .asFile
+            .absolutePath
+    )
+}
+
+tasks.withType<Test>().configureEach {
+    dependsOn(":fixture:assembleDebug")
+    systemProperty(
+        "cloneforge.fixtureApk",
+        project(":fixture").layout.buildDirectory
+            .file("outputs/apk/debug/fixture-debug.apk")
+            .get()
+            .asFile
+            .absolutePath
+    )
+}
