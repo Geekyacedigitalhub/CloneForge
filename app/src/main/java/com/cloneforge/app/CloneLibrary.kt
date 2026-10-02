@@ -40,7 +40,7 @@ data class ImportedClone(
 
 internal object CloneBackupPathValidator {
     fun normalizeEntryName(name: String): String {
-        val safeName = name.replace('\\\\', '/')
+        val safeName = name.replace('\\', '/')
         require(safeName.isNotBlank() && !safeName.startsWith("/")) {
             "Backup contains an unsafe path."
         }
@@ -52,7 +52,7 @@ internal object CloneBackupPathValidator {
 
     fun isApkEntry(name: String): Boolean =
         name.startsWith("apks/") &&
-            name.substringAfter("apks/").matches(Regex("[0-9]+\\\\.apk"))
+            name.substringAfter("apks/").matches(Regex("[0-9]+\\.apk"))
 }
 
 class CloneLibrary(private val context: Context) {
