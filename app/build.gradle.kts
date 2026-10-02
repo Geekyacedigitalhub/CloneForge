@@ -42,15 +42,3 @@ tasks.withType<Test>().configureEach {
             .absolutePath
     )
 }
-
-tasks.withType<Test>().configureEach {
-    dependsOn(":fixture:assembleDebug")
-    systemProperty(
-        "cloneforge.fixtureApk",
-        project(":fixture").layout.buildDirectory
-            .file("outputs/apk/debug/fixture-debug.apk")
-            .get()
-            .asFile
-            .absolutePath
-    )
-}
