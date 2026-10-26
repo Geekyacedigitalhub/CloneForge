@@ -35,7 +35,7 @@ class ClonePreflightService(
                 hasResources = baseInspection.hasResources || splitInspections.any { it.hasResources },
                 dexCount = baseInspection.dexCount + splitInspections.sumOf { it.dexCount },
                 nativeLibraryCount = baseInspection.nativeLibraryCount + splitInspections.sumOf { it.nativeLibraryCount },
-                entryCount = baseInspection.entryCount + splitInspections.sumOf { it.entryCount }
+                assetCount = baseInspection.assetCount + splitInspections.sumOf { it.assetCount }
             )
         }
         val referenceScan = referenceScanner.scan(sourceApk, sourcePackage)

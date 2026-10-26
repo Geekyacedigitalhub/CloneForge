@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "arena/**"
   pull_request:
     branches:
       - main
@@ -37,7 +38,16 @@ jobs:
           gradle-version: "8.10.2"
 
       - name: Run unit & pipeline integration tests and build debug APK
-        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          set +e
+          gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace > build.log 2>&1
+          EXIT_CODE=$?
+          cat build.log
+          if [ $EXIT_CODE -ne 0 ]; then
+            JUNIT_ERR=$(cat app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g' | cut -c 1-3500)
+            echo "::error title=JUnitReport::$JUNIT_ERR"
+            exit $EXIT_CODE
+          fi
 
       - name: Rename APK for easy download
         run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/CloneForge-debug.apk
