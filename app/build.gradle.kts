@@ -34,6 +34,10 @@ android {
         jvmTarget = "17"
     }
     buildFeatures { compose = true }
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -49,6 +53,9 @@ android {
             excludes += "META-INF/*.EC"
             excludes += "META-INF/versions/**"
             excludes += "META-INF/*.kotlin_module"
+            excludes += "META-INF/*.version"
+            excludes += "META-INF/com/**"
+            excludes += "META-INF/version-control-info.textproto"
         }
     }
     testOptions {

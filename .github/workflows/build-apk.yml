@@ -76,6 +76,7 @@ jobs:
           FINAL_APK="app/build/outputs/apk/release/CloneForge.apk"
           COMPAT_APK="app/build/outputs/apk/release/CloneForge-debug.apk"
 
+          zip -d "$RAW_APK" "META-INF/*" || true
           "$ZIPALIGN" -p -f 4 "$RAW_APK" "$ALIGNED_APK"
 
           "$APKSIGNER" sign \
