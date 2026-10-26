@@ -27,6 +27,7 @@ class CloneService(private val context: Context) {
         packageSuffix: String? = null,
         customVersionName: String? = null,
         customVersionCode: Int? = null,
+        iconTint: IconTintOption = IconTintOption.NONE,
         onProgress: ((String) -> Unit)? = null
     ): Result<CloneArtifact> {
         var stage = "clone setup"
@@ -43,7 +44,8 @@ class CloneService(private val context: Context) {
                 cloneName = cloneName,
                 cloneIndex = requestedIndex,
                 customVersionName = customVersionName,
-                customVersionCode = customVersionCode
+                customVersionCode = customVersionCode,
+                iconTint = iconTint
             )
         } else {
             ClonePlanner.createWithSuffix(
@@ -52,7 +54,8 @@ class CloneService(private val context: Context) {
                 suffix = packageSuffix,
                 cloneIndex = requestedIndex,
                 customVersionName = customVersionName,
-                customVersionCode = customVersionCode
+                customVersionCode = customVersionCode,
+                iconTint = iconTint
             )
         }
 
@@ -71,7 +74,7 @@ class CloneService(private val context: Context) {
         val preflightResult = preflight.inspect(
             source.sourceApk,
             source.packageName,
-            isSplitInstall = !applicationInfo.splitSourceDirs.isNullOrEmpty()
+            splitApks = source.splitApks
         ).getOrThrow()
         require(preflightResult.compatibility.supported) {
             preflightResult.compatibility.issues.joinToString(" ")

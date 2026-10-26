@@ -21,6 +21,7 @@ class ApkClonePipeline(
     private val workspaceManager: ApkWorkspaceManager = ApkWorkspaceManager(),
     private val manifestTransformer: BinaryManifestTransformer = BinaryManifestTransformer(),
     private val arscPackageRewriter: ArscPackageRewriter = ArscPackageRewriter(),
+    private val iconCustomizer: ApkIconCustomizer = ApkIconCustomizer(),
     private val plainTextRewriter: ApkPlainTextReferenceRewriter = ApkPlainTextReferenceRewriter(),
     private val dexPackageRewriter: DexPackageRewriter = DexPackageRewriter(),
     private val apkCloneVerifier: ApkCloneVerifier = ApkCloneVerifier()
@@ -87,6 +88,7 @@ class ApkClonePipeline(
         )
 
         val dexRewriteCount = rewriteDexFiles(workspace.unpackedDir, plan)
+        val iconCustomization = iconCustomizer.customize(workspace.unpackedDir, plan.iconTint)
 
         val output = workspaceManager.outputApk(
             workspace,
@@ -114,6 +116,7 @@ class ApkClonePipeline(
             manifestChanged = rewrite.packageChanged ||
                 rewrite.labelChanged ||
                 arscRewriteCount > 0 ||
+                iconCustomization.iconsModified > 0 ||
                 textRewrite.replacements > 0 ||
                 dexRewriteCount > 0
         )

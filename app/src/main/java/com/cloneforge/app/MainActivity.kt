@@ -1070,6 +1070,8 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
     var cloneName by remember { mutableStateOf("${app.label} Clone") }
     var packageSuffix by remember { mutableStateOf("") }
     var customVersionName by remember { mutableStateOf("") }
+    var customVersionCodeText by remember { mutableStateOf("") }
+    var selectedIconTint by remember { mutableStateOf(IconTintOption.NONE) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -1101,10 +1103,14 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         }
 
         withContext(Dispatchers.IO) {
+            val splitFiles = info.splitSourceDirs
+                ?.map { File(it) }
+                ?.filter { it.exists() && it.isFile }
+                .orEmpty()
             ClonePreflightService().inspect(
                 File(info.sourceDir),
                 app.packageName,
-                isSplitInstall = !info.splitSourceDirs.isNullOrEmpty()
+                splitApks = splitFiles
             )
         }.onSuccess {
             preflight = it
@@ -1196,6 +1202,64 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
             modifier = Modifier.fillMaxWidth(),
             enabled = !busy
         )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = customVersionCodeText,
+            onValueChange = {
+                customVersionCodeText = it.filter { ch -> ch.isDigit() }
+                error = null
+                artifact = null
+                status = null
+                progress = 0f
+            },
+            label = { Text("Custom version code (optional)") },
+            placeholder = { Text("Positive integer, e.g. 100") },
+            supportingText = { Text("Leave blank to keep source versionCode") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !busy
+        )
+        Spacer(Modifier.height(12.dp))
+        Text("Clone icon style", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            IconTintOption.entries.take(3).forEach { option ->
+                FilterChip(
+                    selected = selectedIconTint == option,
+                    onClick = {
+                        selectedIconTint = option
+                        error = null
+                        artifact = null
+                        status = null
+                        progress = 0f
+                    },
+                    label = { Text(option.label) },
+                    enabled = !busy
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            IconTintOption.entries.drop(3).forEach { option ->
+                FilterChip(
+                    selected = selectedIconTint == option,
+                    onClick = {
+                        selectedIconTint = option
+                        error = null
+                        artifact = null
+                        status = null
+                        progress = 0f
+                    },
+                    label = { Text(option.label) },
+                    enabled = !busy
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
         val previewPackage = PackageIdentity.validate(app.packageName, packageSuffix.trim()).getOrNull()
         val cloneLibrary = remember { CloneLibrary(context) }
@@ -1291,7 +1355,9 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                     Text(compatibility.title)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "${compatibility.issues.size} blocking issue(s) • ${compatibility.warnings.size} warning(s)" + if (compatibility.packageReferenceCount > 0) " • ${compatibility.packageReferenceCount} raw package reference(s)" else "",
+                        "${compatibility.issues.size} blocking issue(s) • ${compatibility.warnings.size} warning(s)" +
+                            (if (compatibility.packageReferenceCount > 0) " • ${compatibility.packageReferenceCount} raw package reference(s)" else "") +
+                            (if (report.splitApkCount > 0) " • ${report.splitApkCount} split APK(s) will be merged" else ""),
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(Modifier.height(10.dp))
@@ -1373,6 +1439,8 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                             cloneName = cloneName,
                             packageSuffix = packageSuffix,
                             customVersionName = customVersionName.trim().ifBlank { null },
+                            customVersionCode = customVersionCodeText.trim().toIntOrNull(),
+                            iconTint = selectedIconTint,
                             onProgress = { stage ->
                                 scope.launch {
                                     status = stage

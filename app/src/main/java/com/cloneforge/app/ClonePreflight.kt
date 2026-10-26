@@ -8,7 +8,8 @@ data class ClonePreflight(
     val compatibility: CloneCompatibility,
     val referenceScan: ApkReferenceScan,
     val dexReferenceScan: DexReferenceScan,
-    val manifestInfo: BinaryManifestInfo? = null
+    val manifestInfo: BinaryManifestInfo? = null,
+    val splitApkCount: Int = 0
 )
 
 class ClonePreflightService(
@@ -20,9 +21,23 @@ class ClonePreflightService(
     fun inspect(
         sourceApk: File,
         sourcePackage: String,
-        isSplitInstall: Boolean = false
+        isSplitInstall: Boolean = false,
+        splitApks: List<File> = emptyList()
     ): Result<ClonePreflight> = runCatching {
-        val inspection = inspector.inspect(sourceApk)
+        val baseInspection = inspector.inspect(sourceApk)
+        val validSplits = splitApks.filter { it.exists() && it.isFile }
+        val splitInspections = validSplits.mapNotNull { runCatching { inspector.inspect(it) }.getOrNull() }
+        val inspection = if (splitInspections.isEmpty()) {
+            baseInspection
+        } else {
+            baseInspection.copy(
+                hasDex = baseInspection.hasDex || splitInspections.any { it.hasDex },
+                hasResources = baseInspection.hasResources || splitInspections.any { it.hasResources },
+                dexCount = baseInspection.dexCount + splitInspections.sumOf { it.dexCount },
+                nativeLibraryCount = baseInspection.nativeLibraryCount + splitInspections.sumOf { it.nativeLibraryCount },
+                entryCount = baseInspection.entryCount + splitInspections.sumOf { it.entryCount }
+            )
+        }
         val referenceScan = referenceScanner.scan(sourceApk, sourcePackage)
         val dexReferenceScan = dexReferenceScanner.scan(sourceApk, sourcePackage)
         val split = isSplitInstall || hasSplitConfiguration(sourceApk)
@@ -32,7 +47,8 @@ class ClonePreflightService(
             CloneCompatibilityChecker.check(inspection, split, referenceScan.totalReferences + dexReferenceScan.totalReferences),
             referenceScan,
             dexReferenceScan,
-            manifestInfo
+            manifestInfo,
+            validSplits.size
         )
     }
 

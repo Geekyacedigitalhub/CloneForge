@@ -6,7 +6,8 @@ data class ClonePlan(
     val cloneName: String,
     val cloneIndex: Int,
     val customVersionName: String? = null,
-    val customVersionCode: Int? = null
+    val customVersionCode: Int? = null,
+    val iconTint: IconTintOption = IconTintOption.NONE
 )
 
 object ClonePlanner {
@@ -15,7 +16,8 @@ object ClonePlanner {
         cloneName: String,
         cloneIndex: Int,
         customVersionName: String? = null,
-        customVersionCode: Int? = null
+        customVersionCode: Int? = null,
+        iconTint: IconTintOption = IconTintOption.NONE
     ): ClonePlan {
         require(cloneName.isNotBlank()) { "Clone name cannot be empty." }
         require(cloneIndex > 0) { "Clone index must be greater than zero." }
@@ -31,7 +33,8 @@ object ClonePlanner {
             cloneName = cloneName.trim(),
             cloneIndex = cloneIndex,
             customVersionName = customVersionName?.trim()?.ifBlank { null },
-            customVersionCode = customVersionCode
+            customVersionCode = customVersionCode,
+            iconTint = iconTint
         )
     }
 
@@ -41,7 +44,8 @@ object ClonePlanner {
         suffix: String,
         cloneIndex: Int,
         customVersionName: String? = null,
-        customVersionCode: Int? = null
+        customVersionCode: Int? = null,
+        iconTint: IconTintOption = IconTintOption.NONE
     ): ClonePlan {
         require(cloneName.isNotBlank()) { "Clone name cannot be empty." }
         require(cloneIndex > 0) { "Clone index must be greater than zero." }
@@ -57,7 +61,8 @@ object ClonePlanner {
             cloneName = cloneName.trim(),
             cloneIndex = cloneIndex,
             customVersionName = customVersionName?.trim()?.ifBlank { null },
-            customVersionCode = customVersionCode
+            customVersionCode = customVersionCode,
+            iconTint = iconTint
         )
     }
 }
