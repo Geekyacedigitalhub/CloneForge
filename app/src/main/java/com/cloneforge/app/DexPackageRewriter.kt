@@ -110,8 +110,16 @@ class DexPackageRewriter(
         })
 
         val rewritten = rewriter.dexFileRewriter.rewrite(original)
-        if (replacements > 0) {
-            DexFileFactory.writeDexFile(dexFile.absolutePath, rewritten)
+        val tempOutput = File(dexFile.parentFile, dexFile.name + ".rewritten")
+        try {
+            DexFileFactory.writeDexFile(tempOutput.absolutePath, rewritten)
+            if (replacements > 0) {
+                tempOutput.copyTo(dexFile, overwrite = true)
+            }
+        } finally {
+            if (tempOutput.exists()) {
+                tempOutput.delete()
+            }
         }
 
         val verification = verifier.verify(dexFile, sourcePackage, clonePackage)
