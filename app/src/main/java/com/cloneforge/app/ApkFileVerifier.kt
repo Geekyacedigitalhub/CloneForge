@@ -40,7 +40,7 @@ class ApkFileVerifier(
                 }
 
                 val dexCount = zip.entries().asSequence()
-                    .count { it.name.matches(Regex("classes([2-9][0-9]*)?\\.dex")) }
+                    .count { it.name.matches(Regex("classes([2-9]|[1-9][0-9]+)?\\.dex")) }
                 val hasDex = dexCount > 0
                 val hasResources = zip.getEntry("resources.arsc") != null
 

@@ -71,7 +71,6 @@ class CloneLibrary(private val context: Context) {
     fun integrityLabel(record: CloneRecord): String {
         val file = File(record.apkPath)
         if (!file.exists() || !file.isFile) return "Integrity: APK missing"
-        if (record.sha256.isBlank()) return "Integrity: Not checked"
 
         val fingerprint = Pair(file.length(), file.lastModified())
         val cached = integrityCache[record.apkPath]
@@ -80,13 +79,13 @@ class CloneLibrary(private val context: Context) {
         }
 
         integrityDetails.remove(record.apkPath)
+        if (record.sha256.isBlank()) return "Integrity: Not checked"
         return "Integrity: Checking…"
     }
 
     fun verifyIntegrityLabel(record: CloneRecord): String {
         val file = File(record.apkPath)
         if (!file.exists() || !file.isFile) return "Integrity: APK missing"
-        if (record.sha256.isBlank()) return "Integrity: Not checked"
 
         val fingerprint = Pair(file.length(), file.lastModified())
         val cached = integrityCache[record.apkPath]
@@ -95,7 +94,8 @@ class CloneLibrary(private val context: Context) {
         }
 
         integrityDetails.remove(record.apkPath)
-        val label = if (sha256(file).equals(record.sha256, ignoreCase = true)) {
+        if (record.sha256.isBlank()) return "Integrity: Not checked"
+        val label = if (calculateSha256(file).equals(record.sha256, ignoreCase = true)) {
             "Integrity: Verified"
         } else {
             "Integrity: Checksum mismatch"
@@ -107,7 +107,6 @@ class CloneLibrary(private val context: Context) {
     fun integrityDetail(record: CloneRecord): String? {
         val file = File(record.apkPath)
         if (!file.exists() || !file.isFile) return null
-        if (record.sha256.isBlank()) return null
 
         val fingerprint = Pair(file.length(), file.lastModified())
         val cached = integrityCache[record.apkPath]
@@ -337,6 +336,7 @@ class CloneLibrary(private val context: Context) {
             } + record
             writeRecords(records)
             integrityCache.remove(record.apkPath)
+            integrityDetails.remove(record.apkPath)
         }
     }
 
@@ -384,8 +384,19 @@ class CloneLibrary(private val context: Context) {
             }
 
             val sha256 = calculateSha256(tempFile)
+            val archiveLabel = runCatching {
+                val pm = context.packageManager
+                val pkgInfo = pm.getPackageArchiveInfo(tempFile.absolutePath, 0)
+                pkgInfo?.applicationInfo?.let { appInfo ->
+                    appInfo.sourceDir = tempFile.absolutePath
+                    appInfo.publicSourceDir = tempFile.absolutePath
+                    pm.getApplicationLabel(appInfo)?.toString()?.takeIf { it.isNotBlank() }
+                }
+            }.getOrNull()
             val originalName = manifestInfo.applicationLabel?.takeIf { it.isNotBlank() }
-                ?: tempFile.nameWithoutExtension.ifBlank { "Imported Clone" }
+                ?: archiveLabel
+                ?: clonePackage.substringAfterLast('.').replaceFirstChar { it.uppercase() }
+                    .ifBlank { "Imported Clone" }
 
             val existing = findByClonePackage(clonePackage)
             val destinationDir = File(importRoot, sanitize(clonePackage)).apply {
@@ -692,6 +703,7 @@ class CloneLibrary(private val context: Context) {
             }
 
             integrityCache.clear()
+            integrityDetails.clear()
             return prepared.size
         } finally {
             restoreRoot.deleteRecursively()
@@ -704,14 +716,17 @@ class CloneLibrary(private val context: Context) {
             val apkFile = File(record.apkPath)
             val deleted = !apkFile.exists() || apkFile.delete()
 
-            val workspace = File(buildRoot, sanitize(record.clonePackage))
+            val sanitizedPackage = sanitize(record.clonePackage)
+            val workspace = File(buildRoot, sanitizedPackage)
             workspace.deleteRecursively()
+            File(buildRoot, "imports/$sanitizedPackage").deleteRecursively()
 
             val remaining = list().filterNot {
                 it.apkPath == record.apkPath || it.clonePackage == record.clonePackage
             }
             writeRecords(remaining)
             integrityCache.remove(record.apkPath)
+            integrityDetails.remove(record.apkPath)
             return deleted
         }
     }
@@ -725,6 +740,13 @@ class CloneLibrary(private val context: Context) {
         buildRoot.listFiles()
             ?.filter { it.isDirectory && it.name !in referencedPackages && it.name != "imports" }
             ?.forEach { it.deleteRecursively() }
+
+        val importsDir = File(buildRoot, "imports")
+        if (importsDir.exists() && importsDir.isDirectory) {
+            importsDir.listFiles()
+                ?.filter { it.isDirectory && it.name !in referencedPackages }
+                ?.forEach { it.deleteRecursively() }
+        }
     }
 
     fun deleteAll(): Int {
@@ -753,8 +775,10 @@ class CloneLibrary(private val context: Context) {
                 val item = array.getJSONObject(i)
                 val clonePackage = item.optString("clonePackage")
                 if (clonePackage.isNotBlank() && clonePackage !in validPackages) {
+                    val sanitizedPackage = sanitize(clonePackage)
                     File(item.optString("apkPath")).delete()
-                    File(buildRoot, sanitize(clonePackage)).deleteRecursively()
+                    File(buildRoot, sanitizedPackage).deleteRecursively()
+                    File(buildRoot, "imports/$sanitizedPackage").deleteRecursively()
                 }
             }
 
@@ -811,6 +835,7 @@ class CloneLibrary(private val context: Context) {
                 put("sha256", it.sha256)
             })
         }
+        metadataFile.parentFile?.mkdirs()
         val temporary = File(metadataFile.parentFile, metadataFile.name + ".tmp")
         temporary.writeText(array.toString())
 

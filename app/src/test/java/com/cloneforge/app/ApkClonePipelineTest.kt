@@ -44,7 +44,8 @@ class ApkClonePipelineTest {
                     ?: error("Fixture text reference is missing from the clone.")
                 val text = zip.getInputStream(reference).bufferedReader().use { it.readText() }
                 assertTrue(text.contains(plan.clonePackage))
-                assertTrue(!text.contains(plan.sourcePackage))
+                assertTrue(text.contains("${plan.clonePackage}.FixtureActivity"))
+                assertTrue(!text.replace(plan.clonePackage, "").contains(plan.sourcePackage))
             }
 
             val verification = ApkCloneVerifier().verify(

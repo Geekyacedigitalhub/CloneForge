@@ -51,7 +51,7 @@ class DexPackageRewriter(
                 }
         })
 
-        val rewritten = rewriter.rewriteDexFile(original)
+        val rewritten = rewriter.dexFileRewriter.rewrite(original)
         if (replacements > 0) {
             DexFileFactory.writeDexFile(dexFile.absolutePath, rewritten)
         }

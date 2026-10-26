@@ -10,7 +10,11 @@ data class ClonePreflight(
     val dexReferenceScan: DexReferenceScan
 )
 
-class ClonePreflightService(private val inspector: ApkInspector = ApkInspector()) {
+class ClonePreflightService(
+    private val inspector: ApkInspector = ApkInspector(),
+    private val referenceScanner: ApkReferenceScanner = ApkReferenceScanner(),
+    private val dexReferenceScanner: DexReferenceScanner = DexReferenceScanner()
+) {
     fun inspect(sourceApk: File, sourcePackage: String): Result<ClonePreflight> = runCatching {
         val inspection = inspector.inspect(sourceApk)
         val referenceScan = referenceScanner.scan(sourceApk, sourcePackage)

@@ -109,6 +109,6 @@ class ApkSignerService(private val context: Context) {
             "CloneForge signing certificate is not RSA."
         }
 
-        ApkSigningIdentity(privateKey, certificate)
+        return ApkSigningIdentity(privateKey, certificate)
     }
 }

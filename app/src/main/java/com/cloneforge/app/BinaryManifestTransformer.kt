@@ -47,6 +47,22 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         val index = findString(source)
         require(index >= 0) { "Source package was not found in the manifest string pool." }
 
+        val sourcePrefix = "$source."
+        val targetPrefix = "$target."
+        for (i in strings.indices) {
+            val current = strings[i]
+            if (current != target && !current.startsWith(targetPrefix) && current.startsWith(sourcePrefix)) {
+                val updated = targetPrefix + current.removePrefix(sourcePrefix)
+                strings[i] = updated
+                stringIndexes[updated] = i
+                packageReplacement = true
+            }
+        }
+
+        strings[index] = target
+        stringIndexes.remove(source)
+        stringIndexes[target] = index
+
         val targetIndex = indexFor(target)
 
         findStartTagAttribute("manifest", "package")?.let {
@@ -76,6 +92,10 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         System.arraycopy(before, 0, result, 0, before.size)
         System.arraycopy(newPool, 0, result, before.size, newPool.size)
         System.arraycopy(after, 0, result, before.size + newPool.size, after.size)
+
+        if (result.size >= 8) {
+            putU32(result, 4, result.size.toLong())
+        }
 
         val delta = newPool.size - pool.size
 
@@ -170,7 +190,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                     val attributeSize = readU16(original, offset + 26)
                     val attributeCount = readU16(original, offset + 28)
 
-                    var attr = offset + attributeStart
+                    var attr = offset + headerSize + attributeStart
 
                     repeat(attributeCount) {
                         if (attr + attributeSize > offset + size || attributeSize < 20) return@repeat
@@ -220,7 +240,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         putU32(out, 4, chunkSize.toLong())
         putU32(out, 8, strings.size.toLong())
         putU32(out, 12, 0)
-        putU32(out, 16, flags.toLong())
+        putU32(out, 16, (flags and 0x1.inv()).toLong())
         putU32(out, 20, stringsStart.toLong())
         putU32(out, 24, 0)
 
@@ -229,7 +249,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         }
 
         encoded.forEachIndexed { index, bytes ->
-            System.arraycopy(bytes, 0, out, stringsStart + offsets[index], bytes, 0, bytes.size)
+            System.arraycopy(bytes, 0, out, stringsStart + offsets[index], bytes.size)
         }
 
         return out
@@ -238,19 +258,18 @@ private class BinaryXmlEditor(private val original: ByteArray) {
     private fun encodeString(value: String, utf8: Boolean): ByteArray {
         return if (utf8) {
             val bytes = value.toByteArray(Charsets.UTF_8)
-            val len = bytes.size
-            val prefix = if (len < 0x80) byteArrayOf(len.toByte()) else byteArrayOf(
-                ((len shr 7) or 0x80).toByte(),
-                (len and 0x7f).toByte()
-            )
-
             val chars = value.length
             val charPrefix = if (chars < 0x80) byteArrayOf(chars.toByte()) else byteArrayOf(
-                ((chars shr 7) or 0x80).toByte(),
-                (chars and 0x7f).toByte()
+                (((chars shr 8) and 0x7f) or 0x80).toByte(),
+                (chars and 0xff).toByte()
+            )
+            val len = bytes.size
+            val bytePrefix = if (len < 0x80) byteArrayOf(len.toByte()) else byteArrayOf(
+                (((len shr 8) and 0x7f) or 0x80).toByte(),
+                (len and 0xff).toByte()
             )
 
-            prefix + charPrefix + bytes + byteArrayOf(0)
+            charPrefix + bytePrefix + bytes + byteArrayOf(0)
         } else {
             val chars = value.toCharArray()
             val out = ByteArray(2 + chars.size * 2 + 2)
@@ -268,15 +287,25 @@ private class BinaryXmlEditor(private val original: ByteArray) {
 
         return if (utf8) {
             var p = start
-            val byteLength = readLength8(data, p)
-            p += length8Size(data, p)
             val charLength = readLength8(data, p)
             p += length8Size(data, p)
-            if (p + byteLength > data.size) return ""
+            if (p >= data.size) return ""
+            val byteLength = readLength8(data, p)
+            p += length8Size(data, p)
+            if (charLength < 0 || byteLength < 0 || p + byteLength > data.size) return ""
             String(data, p, byteLength, Charsets.UTF_8)
         } else {
-            val length = readU16(data, start)
-            val p = start + 2
+            if (start + 2 > data.size) return ""
+            val first = readU16(data, start)
+            var p = start
+            val length = if (first and 0x8000 != 0) {
+                if (p + 4 > data.size) return ""
+                p += 4
+                ((first and 0x7fff) shl 16) or readU16(data, start + 2)
+            } else {
+                p += 2
+                first
+            }
             if (p + length * 2 > data.size) return ""
             String(data, p, length * 2, Charsets.UTF_16LE)
         }
@@ -285,7 +314,8 @@ private class BinaryXmlEditor(private val original: ByteArray) {
     private fun readLength8(data: ByteArray, offset: Int): Int {
         val first = data[offset].toInt() and 0xff
         return if (first and 0x80 == 0) first
-        else ((first and 0x7f) shl 7) or (data[offset + 1].toInt() and 0xff)
+        else if (offset + 1 < data.size) ((first and 0x7f) shl 8) or (data[offset + 1].toInt() and 0xff)
+        else 0
     }
 
     private fun length8Size(data: ByteArray, offset: Int): Int =

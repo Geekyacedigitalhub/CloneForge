@@ -7,7 +7,8 @@ data class CloneArtifact(
     val apkFile: File,
     val sourcePackage: String,
     val clonePackage: String,
-    val cloneName: String
+    val cloneName: String,
+    val sha256: String = ""
 )
 
 class CloneService(private val context: Context) {
@@ -15,6 +16,7 @@ class CloneService(private val context: Context) {
     private val engine = CloneEngine(context)
     private val pipeline = ApkClonePipeline()
     private val signer = ApkSignerService(context)
+    private val verifier = ApkCloneVerifier()
     private val preflight = ClonePreflightService()
     private val library = CloneLibrary(context)
 
@@ -89,6 +91,21 @@ class CloneService(private val context: Context) {
             stage = "APK signing"
             onProgress?.invoke("Signing clone APK…")
             signer.sign(unsigned.apkFile, signedOutput).getOrThrow()
+            unsigned.apkFile.delete()
+            File(cloneWorkspaceRoot, "unpacked").deleteRecursively()
+
+            stage = "signed APK verification"
+            onProgress?.invoke("Verifying signed clone APK…")
+            val signedVerification = verifier.verify(
+                apkFile = signedOutput,
+                sourcePackage = plan.sourcePackage,
+                clonePackage = plan.clonePackage
+            )
+            require(signedVerification.verified) {
+                "Signed APK verification failed for ${plan.clonePackage}."
+            }
+
+            val sha256 = calculateSha256(signedOutput)
 
             stage = "library save"
             onProgress?.invoke("Saving clone to library…")
@@ -98,7 +115,8 @@ class CloneService(private val context: Context) {
                     sourcePackage = plan.sourcePackage,
                     clonePackage = plan.clonePackage,
                     apkPath = signedOutput.absolutePath,
-                    createdAt = System.currentTimeMillis()
+                    createdAt = System.currentTimeMillis(),
+                    sha256 = sha256
                 )
             )
 
@@ -106,7 +124,8 @@ class CloneService(private val context: Context) {
                 apkFile = signedOutput,
                 sourcePackage = plan.sourcePackage,
                 clonePackage = plan.clonePackage,
-                cloneName = plan.cloneName
+                cloneName = plan.cloneName,
+                sha256 = sha256
             )
         } catch (error: Throwable) {
             cloneWorkspaceRoot.deleteRecursively()
@@ -150,4 +169,17 @@ class CloneService(private val context: Context) {
 
     private fun sanitize(value: String): String =
         value.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "app" }
+
+    private fun calculateSha256(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 }

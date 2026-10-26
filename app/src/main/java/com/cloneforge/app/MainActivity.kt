@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.cloneforge.app
 
 import android.content.Intent
@@ -187,6 +189,7 @@ private fun CloneForgeApp(
     }
 
     LaunchedEffect(Unit) {
+        refreshLibrary()
         onLibraryReady { refreshLibrary() }
     }
     if (showDeleteAllDialog) {
@@ -253,9 +256,8 @@ private fun CloneForgeApp(
             title = { Text("Working…") },
             text = {
                 Text(
-                    deleteFeedback.ifBlank {
-                        "CloneForge is processing your backup. Please keep the app open."
-                    }
+                    deleteFeedback?.ifBlank { null }
+                        ?: "CloneForge is processing your backup. Please keep the app open."
                 )
             },
             confirmButton = {}
@@ -301,12 +303,21 @@ private fun CloneForgeApp(
             CloneDetailsScreen(
                 record = selectedClone!!,
                 installed = selectedClone!!.clonePackage in installedPackages,
+                cloneLibrary = cloneLibrary,
                 contentPadding = padding,
                 onBack = { selectedClone = null },
+                onVerified = {
+                    refreshLibrary()
+                    cloneLibrary.findByClonePackage(selectedClone!!.clonePackage)?.let {
+                        selectedClone = it
+                    }
+                },
                 onDelete = {
-                    cloneLibrary.delete(selectedClone!!)
+                    val removed = selectedClone!!
+                    cloneLibrary.delete(removed)
                     selectedClone = null
                     refreshLibrary()
+                    deleteFeedback = "Removed clone ${removed.cloneName} (${removed.clonePackage})."
                 }
             )
         } else if (selected == null) {
@@ -315,7 +326,7 @@ private fun CloneForgeApp(
                     Text("Installed Apps", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                     TextButton(
                         onClick = { importLauncher.launch(arrayOf("application/vnd.android.package-archive", "*/*")) },
-                        enabled = !importBusy && !backupBusy
+                        enabled = !importBusy && !backupBusy && !integrityBusy
                     ) {
                         Text(if (importBusy) "Importing…" else "Import APK")
                     }
@@ -329,45 +340,41 @@ private fun CloneForgeApp(
                         onClick = {
                             backupCreateLauncher.launch("CloneForge-backup.zip")
                         },
-                        enabled = !backupBusy && !importBusy
+                        enabled = !backupBusy && !importBusy && !integrityBusy
                     ) {
                         Text(if (backupBusy) "Working…" else "Backup")
                     }
                     TextButton(
-            onClick = { showRestoreDialog = true },
-            enabled = !backupBusy && !importBusy
-        ) {
-            Text("Restore")
-        }
-        TextButton(
-            onClick = {
-                integrityBusy = true
-                scope.launch {
-                    val result = withContext(Dispatchers.IO) {
-                        runCatching { cloneLibrary.checkIntegrity() }
-                    }
-                    integrityBusy = false
-                    result.onSuccess { report ->
-                        integrityReport = report
-                        library = cloneLibrary.list()
-                        deleteFeedback = if (report.isHealthy) {
-                            "Integrity check passed: " + report.healthy + " clone(s) healthy."
-                        } else {
-                            "Integrity check found " + report.issues.size + " issue(s)."
-                        }
-                    }.onFailure { throwable ->
-                        deleteFeedback = "Integrity check failed: " +
-                            (throwable.message ?: "Unable to check the clone library.")
-                    }
-                }
-            },
-            enabled = !integrityBusy && !backupBusy && !importBusy
-        ) {
-            Text(if (integrityBusy) "Checking…" else "Check Integrity")
-        },
-                        enabled = !backupBusy && !importBusy
+                        onClick = { showRestoreDialog = true },
+                        enabled = !backupBusy && !importBusy && !integrityBusy
                     ) {
                         Text("Restore")
+                    }
+                    TextButton(
+                        onClick = {
+                            integrityBusy = true
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    runCatching { cloneLibrary.checkIntegrity() }
+                                }
+                                integrityBusy = false
+                                result.onSuccess { report ->
+                                    integrityReport = report
+                                    library = cloneLibrary.list()
+                                    deleteFeedback = if (report.isHealthy) {
+                                        "Integrity check passed: " + report.healthy + " clone(s) healthy."
+                                    } else {
+                                        "Integrity check found " + report.issues.size + " issue(s)."
+                                    }
+                                }.onFailure { throwable ->
+                                    deleteFeedback = "Integrity check failed: " +
+                                        (throwable.message ?: "Unable to check the clone library.")
+                                }
+                            }
+                        },
+                        enabled = !integrityBusy && !backupBusy && !importBusy
+                    ) {
+                        Text(if (integrityBusy) "Checking…" else "Check Integrity")
                     }
                 }
                 deleteFeedback?.let {
@@ -591,10 +598,15 @@ private fun CloneForgeApp(
                                         }
                                         cloneLibrary.integrityDetail(record)?.let { detail ->
                                             Spacer(Modifier.height(4.dp))
+                                            val isHealthyDetail = integrityLabel.endsWith("Verified")
                                             Text(
-                                                "Reason: $detail",
+                                                if (isHealthyDetail) detail else "Reason: $detail",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.error
+                                                color = if (isHealthyDetail) {
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                                } else {
+                                                    MaterialTheme.colorScheme.error
+                                                }
                                             )
                                         }
                                         if (record.sha256.isNotBlank()) {
@@ -649,6 +661,11 @@ private fun CloneForgeApp(
                                             }
                                         )
                                     }
+                                    if (record.clonePackage in installedPackages) {
+                                        TextButton(onClick = { launchInstalledClone(context, record.clonePackage) }) {
+                                            Text("Open")
+                                        }
+                                    }
                                     TextButton(onClick = { openCloneInstaller(context, file) }) {
                                         Text(
                                             if (record.clonePackage in installedPackages) "Update" else "Install"
@@ -657,7 +674,8 @@ private fun CloneForgeApp(
                                     TextButton(onClick = { shareCloneApk(context, file, record.cloneName, record.sourcePackage, record.clonePackage) }) { Text("Share") }
                                     TextButton(onClick = {
                                         cloneLibrary.delete(record)
-                                        library = cloneLibrary.list()
+                                        refreshLibrary()
+                                        deleteFeedback = "Removed clone ${record.cloneName} (${record.clonePackage})."
                                     }) { Text("Delete") }
                                 }
                             }
@@ -714,7 +732,10 @@ private fun CloneForgeApp(
                 }
             }
         } else {
-            CloneSetupScreen(selected!!, Modifier.padding(padding)) { selected = null }
+            CloneSetupScreen(selected!!, Modifier.padding(padding)) {
+                selected = null
+                refreshLibrary()
+            }
         }
     }
 }
@@ -723,8 +744,10 @@ private fun CloneForgeApp(
 private fun CloneDetailsScreen(
     record: CloneRecord,
     installed: Boolean,
+    cloneLibrary: CloneLibrary,
     contentPadding: PaddingValues,
     onBack: () -> Unit,
+    onVerified: () -> Unit,
     onDelete: () -> Unit
 ) {
     val context = LocalContext.current
@@ -739,7 +762,16 @@ private fun CloneDetailsScreen(
     var integrityVerification by remember(record.apkPath) { mutableStateOf<CloneIntegrityReport?>(null) }
     var verificationError by remember(record.apkPath) { mutableStateOf<String?>(null) }
     var displayedSha256 by remember(record.apkPath, record.sha256) {
-        mutableStateOf(if (record.sha256.isBlank() && file.exists()) sha256(file) else record.sha256)
+        mutableStateOf(record.sha256)
+    }
+    LaunchedEffect(record.apkPath, record.sha256) {
+        if (record.sha256.isBlank() && file.exists()) {
+            displayedSha256 = withContext(Dispatchers.IO) {
+                runCatching { sha256(file) }.getOrDefault("")
+            }
+        } else {
+            displayedSha256 = record.sha256
+        }
     }
 
     if (showDeleteDialog) {
@@ -852,7 +884,7 @@ private fun CloneDetailsScreen(
                             scope.launch {
                                 val result = withContext(Dispatchers.IO) {
                                     runCatching {
-                                        val report = CloneLibrary(context).checkIntegrity(record)
+                                        val report = cloneLibrary.checkIntegrity(record)
                                         val apkVerification = ApkFileVerifier().verify(file)
                                         val currentSha256 = if (file.exists()) sha256(file) else ""
                                         Triple(report, apkVerification, currentSha256)
@@ -862,6 +894,7 @@ private fun CloneDetailsScreen(
                                     integrityVerification = report
                                     verification = apkVerification
                                     displayedSha256 = currentSha256
+                                    onVerified()
                                 }
                                 result.onFailure { throwable ->
                                     integrityVerification = null
@@ -957,6 +990,16 @@ private fun CloneDetailsScreen(
         }
 
         Spacer(Modifier.height(20.dp))
+
+        if (installed) {
+            Button(
+                onClick = { launchInstalledClone(context, record.clonePackage) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Open Installed Clone")
+            }
+            Spacer(Modifier.height(8.dp))
+        }
 
         Button(
             onClick = { openCloneInstaller(context, file) },
@@ -1285,9 +1328,9 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                     result.onSuccess { built ->
                         artifact = built
                         progress = 1f
-                        status = "Signed APK created: ${built.apkFile.name}
-Package: ${built.clonePackage}
-Path: ${built.apkFile.absolutePath}"
+                        status = "Signed APK created: ${built.apkFile.name}\n" +
+                            "Package: ${built.clonePackage}\n" +
+                            "Path: ${built.apkFile.absolutePath}"
                     }.onFailure { throwable ->
                         progress = 0f
                         status = null
@@ -1321,7 +1364,10 @@ Path: ${built.apkFile.absolutePath}"
                     Spacer(Modifier.height(8.dp))
                     Text("Package: ${built.clonePackage}", style = MaterialTheme.typography.bodyMedium)
                     Text("APK: ${built.apkFile.name}", style = MaterialTheme.typography.bodySmall)
-                    Text("SHA-256: ${sha256(built.apkFile)}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "SHA-256: ${built.sha256.ifBlank { sha256(built.apkFile) }}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     Spacer(Modifier.height(14.dp))
                     Row(
                         Modifier.fillMaxWidth(),
@@ -1410,6 +1456,13 @@ private fun isPackageInstalled(context: android.content.Context, packageName: St
         context.packageManager.getApplicationInfo(packageName, 0)
         true
     }.getOrDefault(false)
+
+private fun launchInstalledClone(context: android.content.Context, packageName: String) {
+    val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)?.apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    } ?: return
+    context.startActivity(launchIntent)
+}
 
 private fun shareCloneApk(
     context: android.content.Context,
