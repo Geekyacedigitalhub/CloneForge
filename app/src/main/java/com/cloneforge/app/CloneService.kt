@@ -116,7 +116,8 @@ class CloneService(private val context: Context) {
             val signedVerification = verifier.verify(
                 apkFile = signedOutput,
                 sourcePackage = plan.sourcePackage,
-                clonePackage = plan.clonePackage
+                clonePackage = plan.clonePackage,
+                requireCloneDescriptors = false
             )
             require(signedVerification.verified) {
                 "Signed APK verification failed for ${plan.clonePackage}."

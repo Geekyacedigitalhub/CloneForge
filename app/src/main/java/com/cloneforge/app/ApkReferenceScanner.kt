@@ -14,6 +14,8 @@ data class ApkReferenceScan(
 }
 
 class ApkReferenceScanner {
+    private val dexRegex = Regex("classes([2-9]|[1-9][0-9]+)?\\.dex")
+
     fun scan(apk: File, sourcePackage: String): ApkReferenceScan {
         require(sourcePackage.isNotBlank()) { "Source package cannot be empty." }
         ZipFile(apk).use { zip ->
@@ -21,12 +23,18 @@ class ApkReferenceScanner {
             var resources = 0
             var assets = 0
             zip.entries().asSequence().filterNot { it.isDirectory }.forEach { entry ->
+                val name = entry.name
+                val isDex = name.matches(dexRegex)
+                val isResources = name == "resources.arsc"
+                val isAsset = name.startsWith("assets/")
+                if (!isDex && !isResources && !isAsset) return@forEach
+
                 val text = zip.getInputStream(entry).use { it.readBytes().toString(Charset.forName("ISO-8859-1")) }
                 val count = countOccurrences(text, sourcePackage)
                 when {
-                    entry.name.matches(Regex("classes([2-9]|[1-9][0-9]+)?\\.dex")) -> dex += count
-                    entry.name == "resources.arsc" -> resources += count
-                    entry.name.startsWith("assets/") -> assets += count
+                    isDex -> dex += count
+                    isResources -> resources += count
+                    isAsset -> assets += count
                 }
             }
             return ApkReferenceScan(sourcePackage, dex, resources, assets)

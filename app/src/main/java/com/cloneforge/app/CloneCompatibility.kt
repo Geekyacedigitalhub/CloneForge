@@ -38,7 +38,7 @@ object CloneCompatibilityChecker {
         if (!inspection.hasResources) {
             warnings += "resources.arsc is missing. The APK may be resource-light, but resource-dependent apps can fail."
         } else {
-            warnings += "resources.arsc is preserved without binary package rewriting. Apps with package-specific resource metadata may need additional handling."
+            warnings += "resources.arsc package headers are rewritten to match the clone package; apps with custom hardcoded resource lookups may still need attention."
         }
 
         if (inspection.nativeLibraryCount > 0) {
