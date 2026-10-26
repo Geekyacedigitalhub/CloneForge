@@ -1,0 +1,63 @@
+name: Build CloneForge APK
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Accept Android SDK licenses
+        run: |
+          if [ -n "$ANDROID_HOME" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          fi
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Run unit & pipeline integration tests and build debug APK
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK for easy download
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/CloneForge-debug.apk
+
+      - name: Upload CloneForge APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CloneForge-debug-apk
+          path: app/build/outputs/apk/debug/CloneForge-debug.apk
+          if-no-files-found: error
+
+      - name: Publish APK to GitHub Releases
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view v1.0.0 >/dev/null 2>&1; then
+            gh release upload v1.0.0 app/build/outputs/apk/debug/CloneForge-debug.apk --clobber
+          else
+            gh release create v1.0.0 app/build/outputs/apk/debug/CloneForge-debug.apk \
+              --title "CloneForge v1.0.0 (Debug APK)" \
+              --notes "Automated Android APK build of CloneForge. Download **CloneForge-debug.apk** directly onto your Android device to install."
+          fi
