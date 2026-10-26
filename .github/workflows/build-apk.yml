@@ -37,26 +37,75 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
-      - name: Run unit & pipeline integration tests and build debug APK
+      - name: Run unit & pipeline integration tests and build release APK
         run: |
           set +e
-          gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace > build.log 2>&1
+          gradle :app:testDebugUnitTest :app:assembleRelease --no-daemon --stacktrace > build.log 2>&1
           EXIT_CODE=$?
           cat build.log
           if [ $EXIT_CODE -ne 0 ]; then
             JUNIT_ERR=$(cat app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g' | cut -c 1-3500)
+            TAIL_ERR=$(tail -n 60 build.log | tr '\n' ' ' | sed 's/  */ /g' | cut -c 1-3500)
             echo "::error title=JUnitReport::$JUNIT_ERR"
+            echo "::error title=GradleTail::$TAIL_ERR"
             exit $EXIT_CODE
           fi
 
-      - name: Rename APK for easy download
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/CloneForge-debug.apk
+      - name: Align, V1+V2+V3 sign, and verify APK with Android Build Tools
+        run: |
+          set -e
+          BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+          ZIPALIGN="$BUILD_TOOLS_DIR/zipalign"
+          APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+          AAPT2="$BUILD_TOOLS_DIR/aapt2"
+
+          keytool -genkeypair -v \
+            -keystore /tmp/cloneforge-release.jks \
+            -storetype JKS \
+            -keyalg RSA \
+            -keysize 2048 \
+            -sigalg SHA256withRSA \
+            -validity 10000 \
+            -alias cloneforge \
+            -storepass cloneforge123 \
+            -keypass cloneforge123 \
+            -dname "CN=CloneForge, OU=Mobile, O=CloneForge, L=Lagos, S=Lagos, C=NG"
+
+          RAW_APK="app/build/outputs/apk/release/app-release.apk"
+          ALIGNED_APK="app/build/outputs/apk/release/CloneForge-aligned.apk"
+          FINAL_APK="app/build/outputs/apk/release/CloneForge.apk"
+          COMPAT_APK="app/build/outputs/apk/release/CloneForge-debug.apk"
+
+          zip -d "$RAW_APK" "META-INF/*" || true
+          "$ZIPALIGN" -p -f 4 "$RAW_APK" "$ALIGNED_APK"
+
+          "$APKSIGNER" sign \
+            --ks /tmp/cloneforge-release.jks \
+            --ks-key-alias cloneforge \
+            --ks-pass pass:cloneforge123 \
+            --key-pass pass:cloneforge123 \
+            --min-sdk-version 21 \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --v4-signing-enabled false \
+            --out "$FINAL_APK" \
+            "$ALIGNED_APK"
+
+          "$ZIPALIGN" -c -v 4 "$FINAL_APK" > /dev/null
+          VERIFY_OUT=$("$APKSIGNER" verify --verbose --print-certs --min-sdk-version 21 "$FINAL_APK" | tr '\n' ' ')
+          BADGING_OUT=$("$AAPT2" dump badging "$FINAL_APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|application:|application-icon-)" | tr '\n' ' ')
+          echo "::notice title=ApkVerification::$VERIFY_OUT | $BADGING_OUT"
+
+          cp "$FINAL_APK" "$COMPAT_APK"
 
       - name: Upload CloneForge APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CloneForge-debug-apk
-          path: app/build/outputs/apk/debug/CloneForge-debug.apk
+          name: CloneForge-apk
+          path: |
+            app/build/outputs/apk/release/CloneForge.apk
+            app/build/outputs/apk/release/CloneForge-debug.apk
           if-no-files-found: error
 
       - name: Publish APK to GitHub Releases
@@ -65,9 +114,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view v1.0.0 >/dev/null 2>&1; then
-            gh release upload v1.0.0 app/build/outputs/apk/debug/CloneForge-debug.apk --clobber
+            gh release upload v1.0.0 \
+              app/build/outputs/apk/release/CloneForge.apk \
+              app/build/outputs/apk/release/CloneForge-debug.apk \
+              --clobber
           else
-            gh release create v1.0.0 app/build/outputs/apk/debug/CloneForge-debug.apk \
-              --title "CloneForge v1.0.0 (Debug APK)" \
-              --notes "Automated Android APK build of CloneForge. Download **CloneForge-debug.apk** directly onto your Android device to install."
+            gh release create v1.0.0 \
+              app/build/outputs/apk/release/CloneForge.apk \
+              app/build/outputs/apk/release/CloneForge-debug.apk \
+              --title "CloneForge v1.1.0 (Official Signed APK)" \
+              --notes "Automated Android APK build of CloneForge with custom app icon and V1+V2+V3 release signing. Download **CloneForge.apk** directly onto your Android device to install."
           fi
