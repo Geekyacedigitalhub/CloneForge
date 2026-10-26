@@ -27,6 +27,7 @@ class BinaryManifestTransformer {
             val editor = BinaryXmlEditor(manifest)
             editor.replaceManifestPackage(sourcePackage, clonePackage)
             editor.replaceApplicationLabel(cloneLabel)
+            editor.clearSplitRequiredFlags()
             versionName?.trim()?.takeIf { it.isNotEmpty() }?.let {
                 editor.replaceManifestVersionName(it)
             }
@@ -47,6 +48,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
     private var stringPoolChunk: Chunk? = null
     private val replacements = mutableMapOf<Int, Int>()
     private val intReplacements = mutableMapOf<Int, Int>()
+    private val booleanReplacements = mutableMapOf<Int, Boolean>()
     private var packageReplacement = false
     private var labelReplacement = false
 
@@ -101,6 +103,15 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         intReplacements[attr] = versionCode
     }
 
+    fun clearSplitRequiredFlags() {
+        findStartTagAttribute("manifest", "isSplitRequired")?.let {
+            booleanReplacements[it] = false
+        }
+        findStartTagAttribute("application", "isSplitRequired")?.let {
+            booleanReplacements[it] = false
+        }
+    }
+
     fun build(): ManifestRewriteResult {
         val pool = stringPoolChunk ?: error("Android string pool not found.")
         val newPool = buildStringPool(pool)
@@ -141,6 +152,18 @@ private class BinaryXmlEditor(private val original: ByteArray) {
             putU32(result, adjusted, -1L)
             result[adjusted + 7] = 0x10
             putU32(result, adjusted + 8, intValue.toLong() and 0xffffffffL)
+        }
+
+        booleanReplacements.forEach { (absoluteValueOffset, boolValue) ->
+            val adjusted = if (absoluteValueOffset >= pool.offset + pool.size) {
+                absoluteValueOffset + delta
+            } else {
+                absoluteValueOffset
+            }
+
+            putU32(result, adjusted, -1L)
+            result[adjusted + 7] = 0x12
+            putU32(result, adjusted + 8, if (boolValue) -1L else 0L)
         }
 
         return ManifestRewriteResult(
