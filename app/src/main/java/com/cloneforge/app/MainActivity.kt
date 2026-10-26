@@ -217,7 +217,38 @@ private fun CloneForgeApp(
         )
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("CloneForge") }) }) { padding ->
+    val brandLogo = remember(context) {
+        runCatching {
+            drawableToBitmap(context.applicationInfo.loadIcon(context.packageManager))
+        }.getOrNull()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (brandLogo != null) {
+                            Image(
+                                bitmap = brandLogo.asImageBitmap(),
+                                contentDescription = "CloneForge Logo",
+                                modifier = Modifier.size(34.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                        }
+                        Column {
+                            Text("CloneForge", style = MaterialTheme.typography.titleLarge)
+                            Text(
+                                "Android App Cloner & Workspace Studio",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            )
+        }
+    ) { padding ->
         integrityReport?.let { report ->
         AlertDialog(
             onDismissRequest = { integrityReport = null },

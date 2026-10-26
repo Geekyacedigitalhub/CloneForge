@@ -6,7 +6,14 @@
         </intent>
     </queries>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <application android:theme="@style/Theme.CloneForge" android:label="CloneForge" android:allowBackup="false" android:supportsRtl="true">
+    <application
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.CloneForge"
+        android:label="CloneForge"
+        android:allowBackup="false"
+        android:extractNativeLibs="true"
+        android:supportsRtl="true">
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

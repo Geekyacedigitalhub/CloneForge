@@ -40,7 +40,7 @@ class ApkSignerService(private val context: Context) {
         ApkSigner.Builder(listOf(signerConfig))
             .setInputApk(unsignedApk)
             .setOutputApk(signedApk)
-            .setMinSdkVersion(26)
+            .setMinSdkVersion(24)
             .setV1SigningEnabled(true)
             .setV2SigningEnabled(true)
             .setV3SigningEnabled(true)
@@ -55,7 +55,7 @@ class ApkSignerService(private val context: Context) {
         }
 
         val verification = ApkVerifier.Builder(signedApk)
-            .setMinCheckedPlatformVersion(26)
+            .setMinCheckedPlatformVersion(24)
             .build()
             .verify()
         require(verification.isVerified()) {
@@ -86,7 +86,13 @@ class ApkSignerService(private val context: Context) {
                     KeyProperties.PURPOSE_SIGN
                 )
                     .setKeySize(2048)
-                    .setDigests(KeyProperties.DIGEST_SHA256)
+                    .setDigests(
+                        KeyProperties.DIGEST_SHA256,
+                        KeyProperties.DIGEST_SHA512,
+                        KeyProperties.DIGEST_SHA384,
+                        KeyProperties.DIGEST_SHA1,
+                        KeyProperties.DIGEST_NONE
+                    )
                     .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
                     .setUserAuthenticationRequired(false)
                     .setKeyValidityStart(start)
