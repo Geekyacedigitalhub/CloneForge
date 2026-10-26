@@ -1007,6 +1007,13 @@ private fun CloneDetailsScreen(
                 Text("Open Installed Clone")
             }
             Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { openCloneNotificationSettings(context, record.clonePackage) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Notification & App Settings")
+            }
+            Spacer(Modifier.height(8.dp))
         }
 
         Button(
@@ -1062,6 +1069,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
     val scope = rememberCoroutineScope()
     var cloneName by remember { mutableStateOf("${app.label} Clone") }
     var packageSuffix by remember { mutableStateOf("") }
+    var customVersionName by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -1168,6 +1176,23 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
             },
             label = { Text("Package suffix") },
             supportingText = { Text("Example: clone1 → ${app.packageName}.clone1") },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !busy
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = customVersionName,
+            onValueChange = {
+                customVersionName = it
+                error = null
+                artifact = null
+                status = null
+                progress = 0f
+            },
+            label = { Text("Custom version name (optional)") },
+            placeholder = { Text(app.versionName) },
+            supportingText = { Text("Leave blank to keep source version (${app.versionName})") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             enabled = !busy
         )
@@ -1287,6 +1312,34 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                     }
                 }
             }
+            Spacer(Modifier.height(12.dp))
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Notifications & background messaging", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    val hasPush = report.manifestInfo?.hasPushMessaging == true
+                    val hasPostNotifications = report.manifestInfo?.permissions?.any {
+                        it == "android.permission.POST_NOTIFICATIONS"
+                    } == true
+                    Text(
+                        "• Local & service notifications: Supported. Android treats the cloned package as an independent app with its own notification channels, and CloneForge rewrites resources.arsc package headers so notification icons resolve under the clone package.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    if (hasPush) {
+                        Text(
+                            "• Push messaging (FCM/C2DM) detected: Google Play Services binds FCM wake-up tokens to the original package and signing certificate. After installing the clone, enable Notifications and set Battery to Unrestricted in App Settings so its background message connection stays active.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else {
+                        Text(
+                            "• Push messaging: No FCM/C2DM push receiver detected in manifest." +
+                                if (hasPostNotifications) " Android 13+ POST_NOTIFICATIONS permission is declared." else "",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
         }
         preflightError?.let {
             Spacer(Modifier.height(12.dp))
@@ -1319,6 +1372,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                             sourcePackage = app.packageName,
                             cloneName = cloneName,
                             packageSuffix = packageSuffix,
+                            customVersionName = customVersionName.trim().ifBlank { null },
                             onProgress = { stage ->
                                 scope.launch {
                                     status = stage
@@ -1474,6 +1528,22 @@ private fun launchInstalledClone(context: android.content.Context, packageName: 
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     } ?: return
     context.startActivity(launchIntent)
+}
+
+private fun openCloneNotificationSettings(context: android.content.Context, packageName: String) {
+    val notificationIntent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+        putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching { context.startActivity(notificationIntent) }.onFailure {
+        val detailsIntent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:$packageName")
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(detailsIntent) }
+    }
 }
 
 private fun shareCloneApk(
