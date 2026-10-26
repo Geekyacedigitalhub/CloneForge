@@ -38,7 +38,18 @@ jobs:
           gradle-version: "8.10.2"
 
       - name: Run unit & pipeline integration tests and build debug APK
-        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          set +e
+          gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace > build.log 2>&1
+          EXIT_CODE=$?
+          cat build.log
+          if [ $EXIT_CODE -ne 0 ]; then
+            SUMMARY=$(grep -E "(^e: |FAILURE:|> Task .* FAILED|Caused by:|Exception:|Error:|FAILED$)" build.log | head -n 40 | tr '\n' ' | ')
+            DETAILS=$(tail -n 80 build.log | tr '\n' ' | ')
+            echo "::error title=GradleFailureSummary::$SUMMARY"
+            echo "::error title=GradleFailureTail::$DETAILS"
+            exit $EXIT_CODE
+          fi
 
       - name: Rename APK for easy download
         run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/CloneForge-debug.apk
