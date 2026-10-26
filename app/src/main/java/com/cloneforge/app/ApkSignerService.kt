@@ -40,7 +40,7 @@ class ApkSignerService(private val context: Context) {
         ApkSigner.Builder(listOf(signerConfig))
             .setInputApk(unsignedApk)
             .setOutputApk(signedApk)
-            .setMinSdkVersion(24)
+            .setMinSdkVersion(21)
             .setV1SigningEnabled(true)
             .setV2SigningEnabled(true)
             .setV3SigningEnabled(true)
@@ -55,7 +55,7 @@ class ApkSignerService(private val context: Context) {
         }
 
         val verification = ApkVerifier.Builder(signedApk)
-            .setMinCheckedPlatformVersion(24)
+            .setMinCheckedPlatformVersion(21)
             .build()
             .verify()
         require(verification.isVerified()) {

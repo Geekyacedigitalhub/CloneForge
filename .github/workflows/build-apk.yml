@@ -83,7 +83,7 @@ jobs:
             --ks-key-alias cloneforge \
             --ks-pass pass:cloneforge123 \
             --key-pass pass:cloneforge123 \
-            --min-sdk-version 24 \
+            --min-sdk-version 21 \
             --v1-signing-enabled true \
             --v2-signing-enabled true \
             --v3-signing-enabled true \
@@ -92,8 +92,8 @@ jobs:
             "$ALIGNED_APK"
 
           "$ZIPALIGN" -c -v 4 "$FINAL_APK" > /dev/null
-          VERIFY_OUT=$("$APKSIGNER" verify --verbose --print-certs --min-sdk-version 24 "$FINAL_APK" | tr '\n' ' ')
-          BADGING_OUT=$("$AAPT2" dump badging "$FINAL_APK" | head -n 15 | tr '\n' ' ')
+          VERIFY_OUT=$("$APKSIGNER" verify --verbose --print-certs --min-sdk-version 21 "$FINAL_APK" | tr '\n' ' ')
+          BADGING_OUT=$("$AAPT2" dump badging "$FINAL_APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|application:|application-icon-)" | tr '\n' ' ')
           echo "::notice title=ApkVerification::$VERIFY_OUT | $BADGING_OUT"
 
           cp "$FINAL_APK" "$COMPAT_APK"
