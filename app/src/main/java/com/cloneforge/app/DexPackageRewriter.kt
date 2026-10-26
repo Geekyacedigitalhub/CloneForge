@@ -26,7 +26,9 @@ data class DexRewriteResult(
     val changed: Boolean,
     val replacements: Int,
     val verification: DexDescriptorVerification,
-    val outputFile: File
+    val outputFile: File,
+    val descriptorReplacements: Int = 0,
+    val stringReplacements: Int = 0
 )
 
 class DexPackageRewriter(
@@ -41,13 +43,37 @@ class DexPackageRewriter(
         require(sourcePackage.isNotBlank()) { "Source package is empty." }
         require(clonePackage.isNotBlank()) { "Clone package is empty." }
 
-        val sourceDescriptor = "L" + sourcePackage.replace('.', '/') + ";"
+        val sourcePath = sourcePackage.replace('.', '/')
+        val sourceDescriptor = "L$sourcePath;"
         val cloneDescriptor = "L" + clonePackage.replace('.', '/') + ";"
-        val sourcePrefix = sourceDescriptor.dropLast(1) + "/"
+        val sourcePrefix = "L$sourcePath/"
         val clonePrefix = cloneDescriptor.dropLast(1) + "/"
 
-        val original = DexFileFactory.loadDexFile(dexFile, Opcodes.getDefault())
-        var replacements = 0
+        val initialBytes = dexFile.readBytes()
+        val initialVerification = verifier.verifyBytes(initialBytes, sourcePackage, clonePackage)
+        val hasSourcePackageBytes = initialVerification.sourceOccurrences > 0 ||
+            containsAscii(initialBytes, sourcePackage) ||
+            containsAscii(initialBytes, sourcePath)
+
+        if (!hasSourcePackageBytes) {
+            return@runCatching DexRewriteResult(
+                changed = false,
+                replacements = 0,
+                verification = initialVerification,
+                outputFile = dexFile,
+                descriptorReplacements = 0,
+                stringReplacements = 0
+            )
+        }
+
+        val original = runCatching {
+            DexFileFactory.loadDexFile(dexFile, null as Opcodes?)
+        }.getOrElse {
+            DexFileFactory.loadDexFile(dexFile, Opcodes.getDefault())
+        }
+
+        var descriptorReplacements = 0
+        var stringReplacements = 0
 
         val rewriter = DexRewriter(object : RewriterModule() {
             override fun getTypeRewriter(rewriters: Rewriters): Rewriter<String> =
@@ -58,7 +84,7 @@ class DexPackageRewriter(
                             value.startsWith(sourcePrefix) -> clonePrefix + value.removePrefix(sourcePrefix)
                             else -> value
                         }
-                        if (rewritten != value) replacements++
+                        if (rewritten != value) descriptorReplacements++
                         return rewritten
                     }
                 }
@@ -71,7 +97,7 @@ class DexPackageRewriter(
                             val ref = instruction.reference as? StringReference ?: return base
                             val updated = rewritePackageString(ref.string, sourcePackage, clonePackage)
                             if (updated != ref.string) {
-                                replacements++
+                                stringReplacements++
                                 return ImmutableInstruction21c(
                                     instruction.opcode,
                                     instruction.registerA,
@@ -82,7 +108,7 @@ class DexPackageRewriter(
                             val ref = instruction.reference as? StringReference ?: return base
                             val updated = rewritePackageString(ref.string, sourcePackage, clonePackage)
                             if (updated != ref.string) {
-                                replacements++
+                                stringReplacements++
                                 return ImmutableInstruction31c(
                                     instruction.opcode,
                                     instruction.registerA,
@@ -100,7 +126,7 @@ class DexPackageRewriter(
                         if (encodedValue is StringEncodedValue) {
                             val updated = rewritePackageString(encodedValue.value, sourcePackage, clonePackage)
                             if (updated != encodedValue.value) {
-                                replacements++
+                                stringReplacements++
                                 return ImmutableStringEncodedValue(updated)
                             }
                         }
@@ -113,7 +139,8 @@ class DexPackageRewriter(
         val tempOutput = File(dexFile.parentFile, dexFile.name + ".rewritten")
         try {
             DexFileFactory.writeDexFile(tempOutput.absolutePath, rewritten)
-            if (replacements > 0) {
+            val totalReplacements = descriptorReplacements + stringReplacements
+            if (totalReplacements > 0) {
                 tempOutput.copyTo(dexFile, overwrite = true)
             }
         } finally {
@@ -122,8 +149,11 @@ class DexPackageRewriter(
             }
         }
 
+        val totalReplacements = descriptorReplacements + stringReplacements
         val verification = verifier.verify(dexFile, sourcePackage, clonePackage)
-        if (replacements > 0 && !verification.verified) {
+        val dexVerified = verification.sourceOccurrences == 0 &&
+            (descriptorReplacements == 0 || verification.cloneOccurrences > 0)
+        if (!dexVerified) {
             error(
                 "DEX rewrite verification failed: original descriptor occurrences=" +
                     verification.sourceOccurrences +
@@ -133,14 +163,34 @@ class DexPackageRewriter(
         }
 
         DexRewriteResult(
-            changed = replacements > 0,
-            replacements = replacements,
+            changed = totalReplacements > 0,
+            replacements = totalReplacements,
             verification = verification,
-            outputFile = dexFile
+            outputFile = dexFile,
+            descriptorReplacements = descriptorReplacements,
+            stringReplacements = stringReplacements
         )
     }
 
     internal fun rewritePackageString(
+        value: String,
+        sourcePackage: String,
+        clonePackage: String
+    ): String {
+        if (value.contains(';')) {
+            val parts = value.split(';')
+            var changed = false
+            val updatedParts = parts.map { part ->
+                val rewritten = rewriteSinglePackageString(part, sourcePackage, clonePackage)
+                if (rewritten != part) changed = true
+                rewritten
+            }
+            if (changed) return updatedParts.joinToString(";")
+        }
+        return rewriteSinglePackageString(value, sourcePackage, clonePackage)
+    }
+
+    private fun rewriteSinglePackageString(
         value: String,
         sourcePackage: String,
         clonePackage: String
@@ -161,5 +211,23 @@ class DexPackageRewriter(
             value.startsWith(sourceContentPrefix) -> cloneContentPrefix + value.removePrefix(sourceContentPrefix)
             else -> value
         }
+    }
+
+    private fun containsAscii(data: ByteArray, value: String): Boolean {
+        val needle = value.toByteArray(Charsets.US_ASCII)
+        if (needle.isEmpty() || data.size < needle.size) return false
+        var index = 0
+        while (index <= data.size - needle.size) {
+            var matched = true
+            for (offset in needle.indices) {
+                if (data[index + offset] != needle[offset]) {
+                    matched = false
+                    break
+                }
+            }
+            if (matched) return true
+            index++
+        }
+        return false
     }
 }

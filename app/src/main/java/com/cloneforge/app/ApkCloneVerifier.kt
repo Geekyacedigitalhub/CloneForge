@@ -21,7 +21,8 @@ class ApkCloneVerifier(
     fun verify(
         apkFile: File,
         sourcePackage: String,
-        clonePackage: String
+        clonePackage: String,
+        requireCloneDescriptors: Boolean = true
     ): ApkCloneVerification {
         require(apkFile.exists() && apkFile.isFile) { "APK file does not exist." }
 
@@ -64,7 +65,7 @@ class ApkCloneVerifier(
             hasDex &&
             manifestPackage == clonePackage &&
             sourceOccurrences == 0 &&
-            cloneOccurrences > 0
+            (!requireCloneDescriptors || cloneOccurrences > 0)
 
         return ApkCloneVerification(
             manifestPackage = manifestPackage,

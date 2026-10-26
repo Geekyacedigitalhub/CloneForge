@@ -45,6 +45,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
     private val little = ByteOrder.LITTLE_ENDIAN
     private val strings = mutableListOf<String>()
     private val stringIndexes = mutableMapOf<String, Int>()
+    private val resourceIds = mutableListOf<Int>()
     private var stringPoolChunk: Chunk? = null
     private val replacements = mutableMapOf<Int, Int>()
     private val intReplacements = mutableMapOf<Int, Int>()
@@ -62,7 +63,30 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         val targetPrefix = "$target."
         for (i in strings.indices) {
             val current = strings[i]
-            if (current != target && !current.startsWith(targetPrefix) && current.startsWith(sourcePrefix)) {
+            if (current.contains(';')) {
+                val parts = current.split(';')
+                var changed = false
+                val updatedParts = parts.map { part ->
+                    when {
+                        part == target || part.startsWith(targetPrefix) -> part
+                        part == source -> {
+                            changed = true
+                            target
+                        }
+                        part.startsWith(sourcePrefix) -> {
+                            changed = true
+                            targetPrefix + part.removePrefix(sourcePrefix)
+                        }
+                        else -> part
+                    }
+                }
+                if (changed) {
+                    val updated = updatedParts.joinToString(";")
+                    strings[i] = updated
+                    stringIndexes[updated] = i
+                    packageReplacement = true
+                }
+            } else if (current != target && !current.startsWith(targetPrefix) && current.startsWith(sourcePrefix)) {
                 val updated = targetPrefix + current.removePrefix(sourcePrefix)
                 strings[i] = updated
                 stringIndexes[updated] = i
@@ -73,6 +97,8 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         strings[index] = target
         stringIndexes.remove(source)
         stringIndexes[target] = index
+
+        rewriteProviderAuthoritiesAndPermissions(source, target)
 
         val targetIndex = indexFor(target)
 
@@ -104,11 +130,105 @@ private class BinaryXmlEditor(private val original: ByteArray) {
     }
 
     fun clearSplitRequiredFlags() {
-        findStartTagAttribute("manifest", "isSplitRequired")?.let {
+        ensureStringPool()
+        for (i in strings.indices) {
+            when (strings[i]) {
+                "com.android.vending.splits.required" -> {
+                    strings[i] = "com.android.vending.splits.disabled"
+                    stringIndexes[strings[i]] = i
+                }
+                "com.android.vending.splits" -> {
+                    strings[i] = "com.android.vending.split0"
+                    stringIndexes[strings[i]] = i
+                }
+            }
+        }
+        findStartTagAttribute("manifest", "isSplitRequired", 0x01010591)?.let {
             booleanReplacements[it] = false
         }
-        findStartTagAttribute("application", "isSplitRequired")?.let {
+        findStartTagAttribute("application", "isSplitRequired", 0x01010591)?.let {
             booleanReplacements[it] = false
+        }
+        findStartTagAttribute("application", "extractNativeLibs", 0x010104ea)?.let {
+            booleanReplacements[it] = true
+        }
+    }
+
+    private fun rewriteProviderAuthoritiesAndPermissions(source: String, target: String) {
+        ensureStringPool()
+        val sourcePrefix = "$source."
+        val targetPrefix = "$target."
+
+        var offset = readU16(original, 2)
+        while (offset + 8 <= original.size) {
+            val type = readU16(original, offset)
+            val headerSize = readU16(original, offset + 2)
+            val size = readU32(original, offset + 4).toInt()
+            if (size <= 0 || offset + size > original.size) break
+
+            if (type == 0x0102 && offset + 36 <= original.size) {
+                val tagName = strings.getOrNull(readU32(original, offset + 20).toInt())
+                val attributeStart = readU16(original, offset + 24)
+                val attributeSize = readU16(original, offset + 26)
+                val attributeCount = readU16(original, offset + 28)
+                var attr = offset + headerSize + attributeStart
+
+                if (tagName == "provider") {
+                    repeat(attributeCount) {
+                        if (attr + attributeSize > offset + size || attributeSize < 20) return@repeat
+                        val attrNameIndex = readU32(original, attr + 4).toInt()
+                        if (matchesAttribute(attrNameIndex, "authorities", 0x01010018)) {
+                            val rawValueIdx = readU32(original, attr + 8).toInt()
+                            val dataType = original[attr + 15].toInt() and 0xff
+                            val dataIdx = readU32(original, attr + 16).toInt()
+                            val strIdx = if (rawValueIdx in strings.indices) rawValueIdx else if (dataType == 0x03 && dataIdx in strings.indices) dataIdx else -1
+                            if (strIdx in strings.indices) {
+                                val current = strings[strIdx]
+                                val updated = current.split(';').joinToString(";") { part ->
+                                    when {
+                                        part.isBlank() || part == target || part.startsWith(targetPrefix) -> part
+                                        part == source -> target
+                                        part.startsWith(sourcePrefix) -> targetPrefix + part.removePrefix(sourcePrefix)
+                                        else -> targetPrefix + part
+                                    }
+                                }
+                                if (updated != current) {
+                                    strings[strIdx] = updated
+                                    stringIndexes[updated] = strIdx
+                                }
+                            }
+                        }
+                        attr += attributeSize
+                    }
+                } else if (tagName == "permission" || tagName == "permission-group" || tagName == "permission-tree") {
+                    repeat(attributeCount) {
+                        if (attr + attributeSize > offset + size || attributeSize < 20) return@repeat
+                        val attrNameIndex = readU32(original, attr + 4).toInt()
+                        if (matchesAttribute(attrNameIndex, "name", 0x01010003)) {
+                            val rawValueIdx = readU32(original, attr + 8).toInt()
+                            val dataType = original[attr + 15].toInt() and 0xff
+                            val dataIdx = readU32(original, attr + 16).toInt()
+                            val strIdx = if (rawValueIdx in strings.indices) rawValueIdx else if (dataType == 0x03 && dataIdx in strings.indices) dataIdx else -1
+                            if (strIdx in strings.indices) {
+                                val current = strings[strIdx]
+                                if (current.isNotBlank() && !current.startsWith("android.permission.") &&
+                                    current != target && !current.startsWith(targetPrefix)
+                                ) {
+                                    val updated = if (current.startsWith(sourcePrefix)) {
+                                        targetPrefix + current.removePrefix(sourcePrefix)
+                                    } else {
+                                        targetPrefix + current
+                                    }
+                                    strings[strIdx] = updated
+                                    stringIndexes[updated] = strIdx
+                                }
+                            }
+                        }
+                        attr += attributeSize
+                    }
+                }
+            }
+            offset += size
         }
     }
 
@@ -199,16 +319,22 @@ private class BinaryXmlEditor(private val original: ByteArray) {
 
             if (size <= 0 || offset + size > original.size) break
 
-            if (type == 0x0001) {
+            if (type == 0x0001 && stringPoolChunk == null) {
                 stringPoolChunk = Chunk(offset, type, headerSize, size)
                 readStringPool(offset, headerSize)
-                return
+            } else if (type == 0x0180 && resourceIds.isEmpty()) {
+                val count = (size - headerSize) / 4
+                for (i in 0 until count) {
+                    resourceIds.add(readU32(original, offset + headerSize + i * 4).toInt())
+                }
             }
 
             offset += size
         }
 
-        error("Android string pool was not found.")
+        if (stringPoolChunk == null) {
+            error("Android string pool was not found.")
+        }
     }
 
     private fun readStringPool(offset: Int, headerSize: Int) {
@@ -226,8 +352,25 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         }
     }
 
-    private fun findStartTagAttribute(tag: String, attribute: String): Int? {
+    private fun matchesAttribute(attrNameIndex: Int, attribute: String, expectedResId: Int = 0): Boolean {
+        if (strings.getOrNull(attrNameIndex) == attribute) return true
+        if (expectedResId != 0 && resourceIds.getOrNull(attrNameIndex) == expectedResId) return true
+        return false
+    }
+
+    private fun findStartTagAttribute(tag: String, attribute: String, expectedResId: Int = 0): Int? {
         ensureStringPool()
+
+        val defaultResId = if (expectedResId != 0) expectedResId else when (attribute) {
+            "label" -> 0x01010001
+            "name" -> 0x01010003
+            "authorities" -> 0x01010018
+            "versionCode" -> 0x0101021b
+            "versionName" -> 0x0101021c
+            "extractNativeLibs" -> 0x010104ea
+            "isSplitRequired" -> 0x01010591
+            else -> 0
+        }
 
         var offset = readU16(original, 2)
 
@@ -251,7 +394,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                         if (attr + attributeSize > offset + size || attributeSize < 20) return@repeat
 
                         val attrNameIndex = readU32(original, attr + 4).toInt()
-                        if (strings.getOrNull(attrNameIndex) == attribute) {
+                        if (matchesAttribute(attrNameIndex, attribute, defaultResId)) {
                             return attr + 8
                         }
 

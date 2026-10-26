@@ -33,6 +33,10 @@ class DexPackageRewriterTest {
             "content://com.example.chat.clone1",
             rewriter.rewritePackageString("content://com.example.chat", source, clone)
         )
+        assertEquals(
+            "com.example.chat.clone1.startup;com.example.chat.clone1.fileprovider",
+            rewriter.rewritePackageString("com.example.chat.startup;com.example.chat.fileprovider", source, clone)
+        )
     }
 
     @Test

@@ -837,7 +837,7 @@ private fun CloneDetailsScreen(
             .padding(24.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        TextButton(onClick = onBack) { Text("← Back to Clone Library") }
+        TextButton(onClick = onBack) { Text("< Back to Clone Library") }
         Spacer(Modifier.height(8.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1158,7 +1158,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
             .padding(24.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        TextButton(onClick = onBack, enabled = !busy) { Text("← Back") }
+        TextButton(onClick = onBack, enabled = !busy) { Text("< Back") }
         Spacer(Modifier.height(8.dp))
         Text("Clone Setup", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(12.dp))
@@ -1212,7 +1212,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                 progress = 0f
             },
             label = { Text("Package suffix") },
-            supportingText = { Text("Example: clone1 → ${app.packageName}.clone1") },
+            supportingText = { Text("Example: clone1 -> ${app.packageName}.clone1") },
             modifier = Modifier.fillMaxWidth(),
             enabled = !busy
         )
@@ -1575,11 +1575,13 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
         }
 
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "The APK was rebuilt and signed with CloneForge’s on-device signing key.",
-            style = MaterialTheme.typography.bodySmall
-        )
+        if (artifact != null) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "The APK was rebuilt and signed with CloneForge’s on-device signing key.",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
     }
 }
 

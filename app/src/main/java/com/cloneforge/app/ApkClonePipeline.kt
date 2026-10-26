@@ -87,7 +87,7 @@ class ApkClonePipeline(
             clonePackage = plan.clonePackage
         )
 
-        val dexRewriteCount = rewriteDexFiles(workspace.unpackedDir, plan)
+        val dexSummary = rewriteDexFiles(workspace.unpackedDir, plan)
         val iconCustomization = iconCustomizer.customize(workspace.unpackedDir, plan.iconTint)
 
         val output = workspaceManager.outputApk(
@@ -99,7 +99,8 @@ class ApkClonePipeline(
         val verification = apkCloneVerifier.verify(
             apkFile = output,
             sourcePackage = plan.sourcePackage,
-            clonePackage = plan.clonePackage
+            clonePackage = plan.clonePackage,
+            requireCloneDescriptors = dexSummary.descriptorReplacements > 0
         )
         require(verification.verified) {
             "Final APK verification failed: manifestPackage=${verification.manifestPackage}, " +
@@ -118,22 +119,30 @@ class ApkClonePipeline(
                 arscRewriteCount > 0 ||
                 iconCustomization.iconsModified > 0 ||
                 textRewrite.replacements > 0 ||
-                dexRewriteCount > 0
+                dexSummary.totalReplacements > 0
         )
     }
 
-    private fun rewriteDexFiles(unpackedDir: File, plan: ClonePlan): Int {
-        var replacements = 0
+    private data class DexBatchSummary(
+        val totalReplacements: Int,
+        val descriptorReplacements: Int
+    )
+
+    private fun rewriteDexFiles(unpackedDir: File, plan: ClonePlan): DexBatchSummary {
+        var totalReplacements = 0
+        var descriptorReplacements = 0
         unpackedDir.walkTopDown()
             .filter { it.isFile && it.name.matches(Regex("classes([2-9]|[1-9][0-9]+)?\\.dex")) }
             .forEach { dex ->
-                replacements += dexPackageRewriter.rewrite(
+                val res = dexPackageRewriter.rewrite(
                     dex,
                     plan.sourcePackage,
                     plan.clonePackage
-                ).getOrThrow().replacements
+                ).getOrThrow()
+                totalReplacements += res.replacements
+                descriptorReplacements += res.descriptorReplacements
             }
-        return replacements
+        return DexBatchSummary(totalReplacements, descriptorReplacements)
     }
 
     private fun packUnsignedApk(sourceDir: File, outputApk: File) {
@@ -161,7 +170,8 @@ class ApkClonePipeline(
                         entry.crc = crc
                         val nameBytes = relative.toByteArray(Charsets.UTF_8)
                         val dataStart = countingOut.bytesWritten + 30L + nameBytes.size
-                        val padding = ((4L - (dataStart % 4L)) % 4L).toInt()
+                        val alignment = if (relative.endsWith(".so")) 4096L else 4L
+                        val padding = ((alignment - (dataStart % alignment)) % alignment).toInt()
                         if (padding > 0) {
                             entry.extra = ByteArray(padding)
                         }
