@@ -8,7 +8,9 @@ import java.nio.ByteOrder
 data class BinaryManifestInfo(
     val packageName: String?,
     val applicationLabel: String?,
-    val rawSize: Int
+    val rawSize: Int,
+    val permissions: List<String> = emptyList(),
+    val hasPushMessaging: Boolean = false
 )
 
 class BinaryManifestReader {
@@ -36,6 +38,7 @@ class BinaryManifestReader {
 
         var packageName: String? = null
         var applicationLabel: String? = null
+        val permissions = mutableListOf<String>()
 
         while (offset + 8 <= data.size) {
             val chunkType = u16(data, offset)
@@ -71,6 +74,10 @@ class BinaryManifestReader {
                         packageName = value
                     } else if (tagName == "application" && name == "label") {
                         applicationLabel = value
+                    } else if ((tagName == "uses-permission" || tagName == "uses-permission-sdk-23" || tagName == "permission") &&
+                        name == "name" && !value.isNullOrBlank()
+                    ) {
+                        permissions += value
                     } else if (namespace == -1) {
                         if (name == "package" && packageName == null) packageName = value
                         if (name == "label" && applicationLabel == null) applicationLabel = value
@@ -83,7 +90,21 @@ class BinaryManifestReader {
             offset += chunkSize
         }
 
-        return BinaryManifestInfo(packageName, applicationLabel, data.size)
+        val hasPushMessaging = stringPool.containsAny(
+            "com.google.firebase.MESSAGING_EVENT",
+            "com.google.android.c2dm.intent.RECEIVE",
+            "com.google.firebase.iid.FirebaseInstanceIdReceiver"
+        ) || permissions.any {
+            it.contains("c2dm", ignoreCase = true) || it.endsWith(".C2D_MESSAGE")
+        }
+
+        return BinaryManifestInfo(
+            packageName = packageName,
+            applicationLabel = applicationLabel,
+            rawSize = data.size,
+            permissions = permissions.distinct(),
+            hasPushMessaging = hasPushMessaging
+        )
     }
 }
 
@@ -92,6 +113,9 @@ private class StringPool(
 ) {
     fun get(index: Int): String? =
         if (index in strings.indices) strings[index] else null
+
+    fun containsAny(vararg candidates: String): Boolean =
+        strings.any { entry -> candidates.any { candidate -> entry.contains(candidate) } }
 
     companion object {
         fun read(data: ByteArray): StringPool {

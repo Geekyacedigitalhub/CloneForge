@@ -15,7 +15,9 @@ class BinaryManifestTransformer {
         manifest: ByteArray,
         sourcePackage: String,
         clonePackage: String,
-        cloneLabel: String
+        cloneLabel: String,
+        versionName: String? = null,
+        versionCode: Int? = null
     ): Result<ManifestRewriteResult> {
         return runCatching {
             require(sourcePackage.isNotBlank()) { "Source package is empty." }
@@ -25,6 +27,12 @@ class BinaryManifestTransformer {
             val editor = BinaryXmlEditor(manifest)
             editor.replaceManifestPackage(sourcePackage, clonePackage)
             editor.replaceApplicationLabel(cloneLabel)
+            versionName?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                editor.replaceManifestVersionName(it)
+            }
+            versionCode?.takeIf { it > 0 }?.let {
+                editor.replaceManifestVersionCode(it)
+            }
 
             editor.build()
         }
@@ -38,6 +46,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
     private val stringIndexes = mutableMapOf<String, Int>()
     private var stringPoolChunk: Chunk? = null
     private val replacements = mutableMapOf<Int, Int>()
+    private val intReplacements = mutableMapOf<Int, Int>()
     private var packageReplacement = false
     private var labelReplacement = false
 
@@ -81,6 +90,17 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         labelReplacement = true
     }
 
+    fun replaceManifestVersionName(versionName: String) {
+        val targetIndex = indexFor(versionName)
+        val attr = findStartTagAttribute("manifest", "versionName") ?: return
+        replacements[attr] = targetIndex
+    }
+
+    fun replaceManifestVersionCode(versionCode: Int) {
+        val attr = findStartTagAttribute("manifest", "versionCode") ?: return
+        intReplacements[attr] = versionCode
+    }
+
     fun build(): ManifestRewriteResult {
         val pool = stringPoolChunk ?: error("Android string pool not found.")
         val newPool = buildStringPool(pool)
@@ -109,6 +129,18 @@ private class BinaryXmlEditor(private val original: ByteArray) {
             putU32(result, adjusted, newIndex.toLong())
             result[adjusted + 7] = 0x03
             putU32(result, adjusted + 8, newIndex.toLong())
+        }
+
+        intReplacements.forEach { (absoluteValueOffset, intValue) ->
+            val adjusted = if (absoluteValueOffset >= pool.offset + pool.size) {
+                absoluteValueOffset + delta
+            } else {
+                absoluteValueOffset
+            }
+
+            putU32(result, adjusted, -1L)
+            result[adjusted + 7] = 0x10
+            putU32(result, adjusted + 8, intValue.toLong() and 0xffffffffL)
         }
 
         return ManifestRewriteResult(

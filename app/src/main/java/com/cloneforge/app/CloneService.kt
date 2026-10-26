@@ -25,6 +25,8 @@ class CloneService(private val context: Context) {
         cloneName: String,
         cloneIndex: Int? = null,
         packageSuffix: String? = null,
+        customVersionName: String? = null,
+        customVersionCode: Int? = null,
         onProgress: ((String) -> Unit)? = null
     ): Result<CloneArtifact> {
         var stage = "clone setup"
@@ -36,13 +38,21 @@ class CloneService(private val context: Context) {
 
         val requestedIndex = cloneIndex ?: nextAvailableCloneIndex(sourcePackage)
         val plan = if (packageSuffix.isNullOrBlank()) {
-            ClonePlanner.create(sourcePackage, cloneName, requestedIndex)
+            ClonePlanner.create(
+                sourcePackage = sourcePackage,
+                cloneName = cloneName,
+                cloneIndex = requestedIndex,
+                customVersionName = customVersionName,
+                customVersionCode = customVersionCode
+            )
         } else {
             ClonePlanner.createWithSuffix(
-                sourcePackage,
-                cloneName,
-                packageSuffix,
-                requestedIndex
+                sourcePackage = sourcePackage,
+                cloneName = cloneName,
+                suffix = packageSuffix,
+                cloneIndex = requestedIndex,
+                customVersionName = customVersionName,
+                customVersionCode = customVersionCode
             )
         }
 

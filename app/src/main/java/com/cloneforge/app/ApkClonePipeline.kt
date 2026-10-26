@@ -20,6 +20,7 @@ data class UnsignedCloneArtifact(
 class ApkClonePipeline(
     private val workspaceManager: ApkWorkspaceManager = ApkWorkspaceManager(),
     private val manifestTransformer: BinaryManifestTransformer = BinaryManifestTransformer(),
+    private val arscPackageRewriter: ArscPackageRewriter = ArscPackageRewriter(),
     private val plainTextRewriter: ApkPlainTextReferenceRewriter = ApkPlainTextReferenceRewriter(),
     private val dexPackageRewriter: DexPackageRewriter = DexPackageRewriter(),
     private val apkCloneVerifier: ApkCloneVerifier = ApkCloneVerifier()
@@ -57,10 +58,27 @@ class ApkClonePipeline(
             manifest = originalManifest,
             sourcePackage = plan.sourcePackage,
             clonePackage = plan.clonePackage,
-            cloneLabel = plan.cloneName
+            cloneLabel = plan.cloneName,
+            versionName = plan.customVersionName,
+            versionCode = plan.customVersionCode
         ).getOrThrow()
 
         manifestFile.writeBytes(rewrite.data)
+
+        val resourcesFile = File(workspace.unpackedDir, "resources.arsc")
+        val arscRewriteCount = if (resourcesFile.exists() && resourcesFile.isFile) {
+            val arscRewrite = arscPackageRewriter.rewrite(
+                arscBytes = resourcesFile.readBytes(),
+                sourcePackage = plan.sourcePackage,
+                clonePackage = plan.clonePackage
+            )
+            if (arscRewrite.packagesRewritten > 0) {
+                resourcesFile.writeBytes(arscRewrite.data)
+            }
+            arscRewrite.packagesRewritten
+        } else {
+            0
+        }
 
         val textRewrite = plainTextRewriter.rewrite(
             unpackedDir = workspace.unpackedDir,
@@ -95,6 +113,7 @@ class ApkClonePipeline(
             cloneName = plan.cloneName,
             manifestChanged = rewrite.packageChanged ||
                 rewrite.labelChanged ||
+                arscRewriteCount > 0 ||
                 textRewrite.replacements > 0 ||
                 dexRewriteCount > 0
         )

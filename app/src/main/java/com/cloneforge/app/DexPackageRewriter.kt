@@ -2,7 +2,20 @@ package com.cloneforge.app
 
 import org.jf.dexlib2.DexFileFactory
 import org.jf.dexlib2.Opcodes
+import org.jf.dexlib2.ReferenceType
+import org.jf.dexlib2.iface.instruction.Instruction
+import org.jf.dexlib2.iface.instruction.formats.Instruction21c
+import org.jf.dexlib2.iface.instruction.formats.Instruction31c
+import org.jf.dexlib2.iface.reference.StringReference
+import org.jf.dexlib2.iface.value.EncodedValue
+import org.jf.dexlib2.iface.value.StringEncodedValue
+import org.jf.dexlib2.immutable.instruction.ImmutableInstruction21c
+import org.jf.dexlib2.immutable.instruction.ImmutableInstruction31c
+import org.jf.dexlib2.immutable.reference.ImmutableStringReference
+import org.jf.dexlib2.immutable.value.ImmutableStringEncodedValue
 import org.jf.dexlib2.rewriter.DexRewriter
+import org.jf.dexlib2.rewriter.EncodedValueRewriter
+import org.jf.dexlib2.rewriter.InstructionRewriter
 import org.jf.dexlib2.rewriter.Rewriter
 import org.jf.dexlib2.rewriter.RewriterModule
 import org.jf.dexlib2.rewriter.Rewriters
@@ -49,6 +62,51 @@ class DexPackageRewriter(
                         return rewritten
                     }
                 }
+
+            override fun getInstructionRewriter(rewriters: Rewriters): Rewriter<Instruction> =
+                object : InstructionRewriter(rewriters) {
+                    override fun rewrite(instruction: Instruction): Instruction {
+                        val base = super.rewrite(instruction)
+                        if (instruction is Instruction21c && instruction.referenceType == ReferenceType.STRING) {
+                            val ref = instruction.reference as? StringReference ?: return base
+                            val updated = rewritePackageString(ref.string, sourcePackage, clonePackage)
+                            if (updated != ref.string) {
+                                replacements++
+                                return ImmutableInstruction21c(
+                                    instruction.opcode,
+                                    instruction.registerA,
+                                    ImmutableStringReference(updated)
+                                )
+                            }
+                        } else if (instruction is Instruction31c && instruction.referenceType == ReferenceType.STRING) {
+                            val ref = instruction.reference as? StringReference ?: return base
+                            val updated = rewritePackageString(ref.string, sourcePackage, clonePackage)
+                            if (updated != ref.string) {
+                                replacements++
+                                return ImmutableInstruction31c(
+                                    instruction.opcode,
+                                    instruction.registerA,
+                                    ImmutableStringReference(updated)
+                                )
+                            }
+                        }
+                        return base
+                    }
+                }
+
+            override fun getEncodedValueRewriter(rewriters: Rewriters): Rewriter<EncodedValue> =
+                object : EncodedValueRewriter(rewriters) {
+                    override fun rewrite(encodedValue: EncodedValue): EncodedValue {
+                        if (encodedValue is StringEncodedValue) {
+                            val updated = rewritePackageString(encodedValue.value, sourcePackage, clonePackage)
+                            if (updated != encodedValue.value) {
+                                replacements++
+                                return ImmutableStringEncodedValue(updated)
+                            }
+                        }
+                        return super.rewrite(encodedValue)
+                    }
+                }
         })
 
         val rewritten = rewriter.dexFileRewriter.rewrite(original)
@@ -72,5 +130,28 @@ class DexPackageRewriter(
             verification = verification,
             outputFile = dexFile
         )
+    }
+
+    internal fun rewritePackageString(
+        value: String,
+        sourcePackage: String,
+        clonePackage: String
+    ): String {
+        val sourceDotPrefix = "$sourcePackage."
+        val cloneDotPrefix = "$clonePackage."
+        val sourceContentUri = "content://$sourcePackage"
+        val cloneContentUri = "content://$clonePackage"
+        val sourceContentPrefix = "content://$sourcePackage."
+        val cloneContentPrefix = "content://$clonePackage."
+
+        return when {
+            value == clonePackage || value.startsWith(cloneDotPrefix) ||
+                value == cloneContentUri || value.startsWith(cloneContentPrefix) -> value
+            value == sourcePackage -> clonePackage
+            value.startsWith(sourceDotPrefix) -> cloneDotPrefix + value.removePrefix(sourceDotPrefix)
+            value == sourceContentUri -> cloneContentUri
+            value.startsWith(sourceContentPrefix) -> cloneContentPrefix + value.removePrefix(sourceContentPrefix)
+            else -> value
+        }
     }
 }
