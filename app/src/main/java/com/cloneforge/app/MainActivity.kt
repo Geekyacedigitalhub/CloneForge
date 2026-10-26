@@ -321,220 +321,228 @@ private fun CloneForgeApp(
                 }
             )
         } else if (selected == null) {
-            Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Installed Apps", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-                    TextButton(
-                        onClick = { importLauncher.launch(arrayOf("application/vnd.android.package-archive", "*/*")) },
-                        enabled = !importBusy && !backupBusy && !integrityBusy
-                    ) {
-                        Text(if (importBusy) "Importing…" else "Import APK")
-                    }
+            val filteredApps = apps.filter { app ->
+                val query = appQuery.trim().lowercase()
+                query.isBlank() || app.label.lowercase().contains(query) || app.packageName.lowercase().contains(query)
+            }
+            val filteredLibrary = library.filter { record ->
+                val installed = record.clonePackage in installedPackages
+                val matchesFilter = when (libraryFilter) {
+                    "Installed" -> installed
+                    "APK Ready" -> !installed
+                    else -> true
                 }
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        onClick = {
-                            backupCreateLauncher.launch("CloneForge-backup.zip")
-                        },
-                        enabled = !backupBusy && !importBusy && !integrityBusy
-                    ) {
-                        Text(if (backupBusy) "Working…" else "Backup")
-                    }
-                    TextButton(
-                        onClick = { showRestoreDialog = true },
-                        enabled = !backupBusy && !importBusy && !integrityBusy
-                    ) {
-                        Text("Restore")
-                    }
-                    TextButton(
-                        onClick = {
-                            integrityBusy = true
-                            scope.launch {
-                                val result = withContext(Dispatchers.IO) {
-                                    runCatching { cloneLibrary.checkIntegrity() }
-                                }
-                                integrityBusy = false
-                                result.onSuccess { report ->
-                                    integrityReport = report
-                                    library = cloneLibrary.list()
-                                    deleteFeedback = if (report.isHealthy) {
-                                        "Integrity check passed: " + report.healthy + " clone(s) healthy."
-                                    } else {
-                                        "Integrity check found " + report.issues.size + " issue(s)."
-                                    }
-                                }.onFailure { throwable ->
-                                    deleteFeedback = "Integrity check failed: " +
-                                        (throwable.message ?: "Unable to check the clone library.")
-                                }
-                            }
-                        },
-                        enabled = !integrityBusy && !backupBusy && !importBusy
-                    ) {
-                        Text(if (integrityBusy) "Checking…" else "Check Integrity")
-                    }
+                val integrity = cloneLibrary.integrityLabel(record)
+                val matchesIntegrity = when (integrityFilter) {
+                    "Verified" -> integrity == "Integrity: Verified"
+                    "Needs attention" ->
+                        integrity != "Integrity: Verified" &&
+                            integrity != "Integrity: Checking…"
+                    else -> true
                 }
-                deleteFeedback?.let {
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                    ) {
-                        Text(it, Modifier.padding(14.dp))
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                OutlinedTextField(
-                    value = appQuery,
-                    onValueChange = { appQuery = it },
-                    label = { Text("Search installed apps") },
-                    placeholder = { Text("App name or package") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                val query = libraryQuery.trim().lowercase()
+                matchesFilter && matchesIntegrity && (
+                    query.isBlank() ||
+                        record.cloneName.lowercase().contains(query) ||
+                        record.clonePackage.lowercase().contains(query) ||
+                        record.sourcePackage.lowercase().contains(query)
                 )
-                val filteredApps = apps.filter { app ->
-                    val query = appQuery.trim().lowercase()
-                    query.isBlank() || app.label.lowercase().contains(query) || app.packageName.lowercase().contains(query)
-                }
-                if (library.isNotEmpty()) {
-                    Spacer(Modifier.height(20.dp))
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Clone Library", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { refreshLibrary() }) { Text("Refresh") }
-                        TextButton(onClick = { showDeleteAllDialog = true }) { Text("Delete all") }
+                        Text("Installed Apps", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                        TextButton(
+                            onClick = { importLauncher.launch(arrayOf("application/vnd.android.package-archive", "*/*")) },
+                            enabled = !importBusy && !backupBusy && !integrityBusy
+                        ) {
+                            Text(if (importBusy) "Importing…" else "Import APK")
+                        }
                     }
                     Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(
+                            onClick = {
+                                backupCreateLauncher.launch("CloneForge-backup.zip")
+                            },
+                            enabled = !backupBusy && !importBusy && !integrityBusy
+                        ) {
+                            Text(if (backupBusy) "Working…" else "Backup")
+                        }
+                        TextButton(
+                            onClick = { showRestoreDialog = true },
+                            enabled = !backupBusy && !importBusy && !integrityBusy
+                        ) {
+                            Text("Restore")
+                        }
+                        TextButton(
+                            onClick = {
+                                integrityBusy = true
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        runCatching { cloneLibrary.checkIntegrity() }
+                                    }
+                                    integrityBusy = false
+                                    result.onSuccess { report ->
+                                        integrityReport = report
+                                        library = cloneLibrary.list()
+                                        deleteFeedback = if (report.isHealthy) {
+                                            "Integrity check passed: " + report.healthy + " clone(s) healthy."
+                                        } else {
+                                            "Integrity check found " + report.issues.size + " issue(s)."
+                                        }
+                                    }.onFailure { throwable ->
+                                        deleteFeedback = "Integrity check failed: " +
+                                            (throwable.message ?: "Unable to check the clone library.")
+                                    }
+                                }
+                            },
+                            enabled = !integrityBusy && !backupBusy && !importBusy
+                        ) {
+                            Text(if (integrityBusy) "Checking…" else "Check Integrity")
+                        }
+                    }
+                    deleteFeedback?.let {
+                        Card(
+                            Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                        ) {
+                            Text(it, Modifier.padding(14.dp))
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
                     OutlinedTextField(
-                        value = libraryQuery,
-                        onValueChange = { libraryQuery = it },
-                        label = { Text("Search clones") },
-                        placeholder = { Text("Name, package, or source") },
+                        value = appQuery,
+                        onValueChange = { appQuery = it },
+                        label = { Text("Search installed apps") },
+                        placeholder = { Text("App name or package") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("All", "Installed", "APK Ready").forEach { filter ->
-                            FilterChip(
-                                selected = libraryFilter == filter,
-                                onClick = { libraryFilter = filter },
-                                label = { Text(filter) }
-                            )
+                }
+                if (library.isNotEmpty()) {
+                    item {
+                        Spacer(Modifier.height(12.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Clone Library", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { refreshLibrary() }) { Text("Refresh") }
+                            TextButton(onClick = { showDeleteAllDialog = true }) { Text("Delete all") }
                         }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text("Integrity", style = MaterialTheme.typography.labelLarge)
-                    Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("All", "Verified", "Needs attention").forEach { filter ->
-                            FilterChip(
-                                selected = integrityFilter == filter,
-                                onClick = { integrityFilter = filter },
-                                label = { Text(filter) }
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    val totalLibraryBytes = library.sumOf { record ->
-                        java.io.File(record.apkPath).length()
-                    }
-                    Card(Modifier.fillMaxWidth()) {
-                        Row(
-                            Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Clone storage", style = MaterialTheme.typography.labelLarge)
-                                Text(formatFileSize(totalLibraryBytes), style = MaterialTheme.typography.titleMedium)
-                            }
-                            Text(
-                                "${library.size} clone" + if (library.size == 1) "" else "s",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                    val integrityCounts = library
-                        .map { cloneLibrary.integrityLabel(it) }
-                        .groupingBy { it }
-                        .eachCount()
-                    val verifiedCount = integrityCounts["Integrity: Verified"] ?: 0
-                    val attentionCount = library.count { record ->
-                        val label = cloneLibrary.integrityLabel(record)
-                        label != "Integrity: Verified" && label != "Integrity: Checking…"
-                    }
-                    val checkingCount = integrityCounts["Integrity: Checking…"] ?: 0
-                    Spacer(Modifier.height(8.dp))
-                    Card(Modifier.fillMaxWidth()) {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Verified", style = MaterialTheme.typography.labelMedium)
-                                Text(verifiedCount.toString(), style = MaterialTheme.typography.titleMedium)
-                            }
-                            Column(Modifier.weight(1f)) {
-                                Text("Needs attention", style = MaterialTheme.typography.labelMedium)
-                                Text(attentionCount.toString(), style = MaterialTheme.typography.titleMedium)
-                            }
-                            Column(Modifier.weight(1f)) {
-                                Text("Checking", style = MaterialTheme.typography.labelMedium)
-                                Text(checkingCount.toString(), style = MaterialTheme.typography.titleMedium)
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    val filteredLibrary = library.filter { record ->
-                        val installed = record.clonePackage in installedPackages
-                        val matchesFilter = when (libraryFilter) {
-                            "Installed" -> installed
-                            "APK Ready" -> !installed
-                            else -> true
-                        }
-                        val integrity = cloneLibrary.integrityLabel(record)
-                        val matchesIntegrity = when (integrityFilter) {
-                            "Verified" -> integrity == "Integrity: Verified"
-                            "Needs attention" ->
-                                integrity != "Integrity: Verified" &&
-                                    integrity != "Integrity: Checking…"
-                            else -> true
-                        }
-                        val query = libraryQuery.trim().lowercase()
-                        matchesFilter && matchesIntegrity && (
-                            query.isBlank() ||
-                                record.cloneName.lowercase().contains(query) ||
-                                record.clonePackage.lowercase().contains(query) ||
-                                record.sourcePackage.lowercase().contains(query)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = libraryQuery,
+                            onValueChange = { libraryQuery = it },
+                            label = { Text("Search clones") },
+                            placeholder = { Text("Name, package, or source") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
                         )
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("All", "Installed", "APK Ready").forEach { filter ->
+                                FilterChip(
+                                    selected = libraryFilter == filter,
+                                    onClick = { libraryFilter = filter },
+                                    label = { Text(filter) }
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("Integrity", style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("All", "Verified", "Needs attention").forEach { filter ->
+                                FilterChip(
+                                    selected = integrityFilter == filter,
+                                    onClick = { integrityFilter = filter },
+                                    label = { Text(filter) }
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        val totalLibraryBytes = library.sumOf { record ->
+                            java.io.File(record.apkPath).length()
+                        }
+                        Card(Modifier.fillMaxWidth()) {
+                            Row(
+                                Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Clone storage", style = MaterialTheme.typography.labelLarge)
+                                    Text(formatFileSize(totalLibraryBytes), style = MaterialTheme.typography.titleMedium)
+                                }
+                                Text(
+                                    "${library.size} clone" + if (library.size == 1) "" else "s",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                        val integrityCounts = library
+                            .map { cloneLibrary.integrityLabel(it) }
+                            .groupingBy { it }
+                            .eachCount()
+                        val verifiedCount = integrityCounts["Integrity: Verified"] ?: 0
+                        val attentionCount = library.count { record ->
+                            val label = cloneLibrary.integrityLabel(record)
+                            label != "Integrity: Verified" && label != "Integrity: Checking…"
+                        }
+                        val checkingCount = integrityCounts["Integrity: Checking…"] ?: 0
+                        Spacer(Modifier.height(8.dp))
+                        Card(Modifier.fillMaxWidth()) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Verified", style = MaterialTheme.typography.labelMedium)
+                                    Text(verifiedCount.toString(), style = MaterialTheme.typography.titleMedium)
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text("Needs attention", style = MaterialTheme.typography.labelMedium)
+                                    Text(attentionCount.toString(), style = MaterialTheme.typography.titleMedium)
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text("Checking", style = MaterialTheme.typography.labelMedium)
+                                    Text(checkingCount.toString(), style = MaterialTheme.typography.titleMedium)
+                                }
+                            }
+                        }
                     }
                     if (filteredLibrary.isEmpty()) {
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text(
-                                    if (libraryQuery.isBlank() && libraryFilter == "All" && integrityFilter == "All") {
-                                        "No clones available yet."
-                                    } else {
-                                        "No clones match this search or filter."
-                                    },
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Text(
-                                    if (libraryQuery.isBlank() && libraryFilter == "All") {
-                                        "Build a clone from an installed app to see it here."
-                                    } else {
-                                        "Try another search term or switch the search, status, or integrity filter."
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Text(
+                                        if (libraryQuery.isBlank() && libraryFilter == "All" && integrityFilter == "All") {
+                                            "No clones available yet."
+                                        } else {
+                                            "No clones match this search or filter."
+                                        },
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Text(
+                                        if (libraryQuery.isBlank() && libraryFilter == "All") {
+                                            "Build a clone from an installed app to see it here."
+                                        } else {
+                                            "Try another search term or switch the search, status, or integrity filter."
+                                        },
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
                             }
                         }
                     } else {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-                            items(filteredLibrary) { record ->
+                        items(filteredLibrary, key = { "clone:" + it.clonePackage }) { record ->
                             val file = java.io.File(record.apkPath)
                             var integrityLabel by remember(
                                 record.apkPath,
@@ -681,51 +689,51 @@ private fun CloneForgeApp(
                             }
                         }
                     }
+                    item {
+                        Spacer(Modifier.height(8.dp))
                     }
-                    Spacer(Modifier.height(16.dp))
                 }
-                Spacer(Modifier.height(6.dp))
-                Text("Select an app to prepare it for cloning.")
-                Spacer(Modifier.height(16.dp))
+                item {
+                    Spacer(Modifier.height(6.dp))
+                    Text("Select an app to prepare it for cloning.")
+                    Spacer(Modifier.height(8.dp))
+                }
                 if (filteredApps.isEmpty()) {
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text(
-                                if (appQuery.isBlank()) "No launchable apps found." else "No apps match your search.",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                if (appQuery.isBlank()) {
-                                    "CloneForge could not find any other launchable apps on this device."
-                                } else {
-                                    "Try another app name or package name."
-                                },
-                                style = MaterialTheme.typography.bodyMedium
-                            )
+                    item {
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(
+                                    if (appQuery.isBlank()) "No launchable apps found." else "No apps match your search.",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    if (appQuery.isBlank()) {
+                                        "CloneForge could not find any other launchable apps on this device."
+                                    } else {
+                                        "Try another app name or package name."
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
                         }
                     }
                 } else {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        items(filteredApps) { app ->
-                            Card(Modifier.fillMaxWidth().clickable { selected = app }) {
-                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Image(
-                                        bitmap = app.icon.asImageBitmap(),
-                                        contentDescription = app.label,
-                                        modifier = Modifier.size(52.dp)
-                                    )
-                                    Spacer(Modifier.width(14.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(app.label, style = MaterialTheme.typography.titleMedium)
-                                        Text(app.packageName, style = MaterialTheme.typography.bodySmall)
-                                        Text("Version ${app.versionName}", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    TextButton(onClick = { selected = app }) { Text("Clone") }
+                    items(filteredApps, key = { "app:" + it.packageName }) { app ->
+                        Card(Modifier.fillMaxWidth().clickable { selected = app }) {
+                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Image(
+                                    bitmap = app.icon.asImageBitmap(),
+                                    contentDescription = app.label,
+                                    modifier = Modifier.size(52.dp)
+                                )
+                                Spacer(Modifier.width(14.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(app.label, style = MaterialTheme.typography.titleMedium)
+                                    Text(app.packageName, style = MaterialTheme.typography.bodySmall)
+                                    Text("Version ${app.versionName}", style = MaterialTheme.typography.bodySmall)
                                 }
+                                TextButton(onClick = { selected = app }) { Text("Clone") }
                             }
                         }
                     }
@@ -1085,7 +1093,11 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         }
 
         withContext(Dispatchers.IO) {
-            ClonePreflightService().inspect(File(info.sourceDir), app.packageName)
+            ClonePreflightService().inspect(
+                File(info.sourceDir),
+                app.packageName,
+                isSplitInstall = !info.splitSourceDirs.isNullOrEmpty()
+            )
         }.onSuccess {
             preflight = it
             preflightError = null

@@ -35,6 +35,15 @@ class ApkClonePipeline(
         require(plan.clonePackage.isNotBlank()) { "Clone package is empty." }
         require(plan.cloneName.isNotBlank()) { "Clone name is empty." }
 
+        ManifestTransformer().validate(
+            ManifestTransformRequest(
+                sourceApk = sourceApk,
+                sourcePackage = plan.sourcePackage,
+                clonePackage = plan.clonePackage,
+                cloneLabel = plan.cloneName
+            )
+        ).getOrThrow()
+
         val workspace = workspaceManager.create(workspaceRoot, sourceApk)
         workspaceManager.unpack(workspace)
 

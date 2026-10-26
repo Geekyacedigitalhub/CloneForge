@@ -15,11 +15,15 @@ class ClonePreflightService(
     private val referenceScanner: ApkReferenceScanner = ApkReferenceScanner(),
     private val dexReferenceScanner: DexReferenceScanner = DexReferenceScanner()
 ) {
-    fun inspect(sourceApk: File, sourcePackage: String): Result<ClonePreflight> = runCatching {
+    fun inspect(
+        sourceApk: File,
+        sourcePackage: String,
+        isSplitInstall: Boolean = false
+    ): Result<ClonePreflight> = runCatching {
         val inspection = inspector.inspect(sourceApk)
         val referenceScan = referenceScanner.scan(sourceApk, sourcePackage)
         val dexReferenceScan = dexReferenceScanner.scan(sourceApk, sourcePackage)
-        val split = hasSplitConfiguration(sourceApk)
+        val split = isSplitInstall || hasSplitConfiguration(sourceApk)
         ClonePreflight(
             inspection,
             CloneCompatibilityChecker.check(inspection, split, referenceScan.totalReferences + dexReferenceScan.totalReferences),
