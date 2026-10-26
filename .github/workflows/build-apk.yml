@@ -44,10 +44,8 @@ jobs:
           EXIT_CODE=$?
           cat build.log
           if [ $EXIT_CODE -ne 0 ]; then
-            SUMMARY=$(grep -E "(^e: |FAILURE:|> Task .* FAILED|Caused by:|Exception:|Error:|FAILED$)" build.log | head -n 40 | tr '\n' ' | ')
-            DETAILS=$(tail -n 80 build.log | tr '\n' ' | ')
-            echo "::error title=GradleFailureSummary::$SUMMARY"
-            echo "::error title=GradleFailureTail::$DETAILS"
+            JUNIT_ERR=$(cat app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g' | cut -c 1-3500)
+            echo "::error title=JUnitReport::$JUNIT_ERR"
             exit $EXIT_CODE
           fi
 
