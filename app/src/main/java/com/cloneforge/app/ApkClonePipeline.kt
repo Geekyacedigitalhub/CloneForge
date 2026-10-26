@@ -3,6 +3,9 @@ package com.cloneforge.app
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.FilterOutputStream
+import java.io.OutputStream
+import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -31,6 +34,15 @@ class ApkClonePipeline(
         require(plan.sourcePackage.isNotBlank()) { "Source package is empty." }
         require(plan.clonePackage.isNotBlank()) { "Clone package is empty." }
         require(plan.cloneName.isNotBlank()) { "Clone name is empty." }
+
+        ManifestTransformer().validate(
+            ManifestTransformRequest(
+                sourceApk = sourceApk,
+                sourcePackage = plan.sourcePackage,
+                clonePackage = plan.clonePackage,
+                cloneLabel = plan.cloneName
+            )
+        ).getOrThrow()
 
         val workspace = workspaceManager.create(workspaceRoot, sourceApk)
         workspaceManager.unpack(workspace)
@@ -91,7 +103,7 @@ class ApkClonePipeline(
     private fun rewriteDexFiles(unpackedDir: File, plan: ClonePlan): Int {
         var replacements = 0
         unpackedDir.walkTopDown()
-            .filter { it.isFile && it.name.matches(Regex("classes([2-9][0-9]*)?\\.dex")) }
+            .filter { it.isFile && it.name.matches(Regex("classes([2-9]|[1-9][0-9]+)?\\.dex")) }
             .forEach { dex ->
                 replacements += dexPackageRewriter.rewrite(
                     dex,
@@ -106,7 +118,8 @@ class ApkClonePipeline(
         require(sourceDir.exists() && sourceDir.isDirectory) { "Unpacked APK directory is missing." }
         outputApk.parentFile?.mkdirs()
 
-        ZipOutputStream(FileOutputStream(outputApk)).use { zip ->
+        val countingOut = CountingOutputStream(FileOutputStream(outputApk))
+        ZipOutputStream(countingOut).use { zip ->
             sourceDir.walkTopDown()
                 .filter { it.isFile }
                 .sortedBy { it.relativeTo(sourceDir).invariantSeparatorsPath }
@@ -117,12 +130,34 @@ class ApkClonePipeline(
                     val entry = ZipEntry(relative).apply {
                         time = 0L
                     }
-                    zip.putNextEntry(entry)
-                    FileInputStream(file).use { input -> input.copyTo(zip) }
-                    zip.closeEntry()
+                    if (shouldStoreUncompressed(relative)) {
+                        val bytes = file.readBytes()
+                        val crc = CRC32().apply { update(bytes) }.value
+                        entry.method = ZipEntry.STORED
+                        entry.size = bytes.size.toLong()
+                        entry.compressedSize = bytes.size.toLong()
+                        entry.crc = crc
+                        val nameBytes = relative.toByteArray(Charsets.UTF_8)
+                        val dataStart = countingOut.bytesWritten + 30L + nameBytes.size
+                        val padding = ((4L - (dataStart % 4L)) % 4L).toInt()
+                        if (padding > 0) {
+                            entry.extra = ByteArray(padding)
+                        }
+                        zip.putNextEntry(entry)
+                        zip.write(bytes)
+                        zip.closeEntry()
+                    } else {
+                        zip.putNextEntry(entry)
+                        FileInputStream(file).use { input -> input.copyTo(zip) }
+                        zip.closeEntry()
+                    }
                 }
         }
     }
+
+    private fun shouldStoreUncompressed(path: String): Boolean =
+        path == "resources.arsc" ||
+            (path.startsWith("lib/") && path.endsWith(".so"))
 
     private fun isOldSignatureEntry(path: String): Boolean {
         if (!path.startsWith("META-INF/", ignoreCase = true)) return false
@@ -130,6 +165,22 @@ class ApkClonePipeline(
         return name.endsWith(".SF") ||
             name.endsWith(".RSA") ||
             name.endsWith(".DSA") ||
+            name.endsWith(".EC") ||
             name == "MANIFEST.MF"
+    }
+
+    private class CountingOutputStream(out: OutputStream) : FilterOutputStream(out) {
+        var bytesWritten: Long = 0L
+            private set
+
+        override fun write(b: Int) {
+            out.write(b)
+            bytesWritten += 1L
+        }
+
+        override fun write(b: ByteArray, off: Int, len: Int) {
+            out.write(b, off, len)
+            bytesWritten += len.toLong()
+        }
     }
 }

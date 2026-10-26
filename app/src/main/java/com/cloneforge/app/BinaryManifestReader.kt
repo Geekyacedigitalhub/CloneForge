@@ -45,11 +45,13 @@ class BinaryManifestReader {
             if (chunkSize < headerSize || chunkSize <= 0 || offset + chunkSize > data.size) break
 
             if (chunkType == START_TAG && offset + 36 <= data.size) {
+                val tagNameIndex = u32(data, offset + 20).toInt()
+                val tagName = stringPool.get(tagNameIndex)
                 val attributeStart = u16(data, offset + 24)
                 val attributeSize = u16(data, offset + 26)
                 val attributeCount = u16(data, offset + 28)
 
-                var attrOffset = offset + attributeStart
+                var attrOffset = offset + headerSize + attributeStart
                 repeat(attributeCount) {
                     if (attrOffset + attributeSize > offset + chunkSize || attributeSize < 20) return@repeat
 
@@ -61,13 +63,17 @@ class BinaryManifestReader {
 
                     val name = stringPool.get(nameIndex)
                     val value = when (dataType) {
-                        0x03 -> stringPool.get(valueIndex)
-                        else -> dataValue.toString()
+                        0x03 -> stringPool.get(valueIndex) ?: stringPool.get(dataValue)
+                        else -> if (valueIndex >= 0) stringPool.get(valueIndex) else null
                     }
 
-                    if (namespace == -1 || namespace == 0xffffffff) {
-                        if (name == "package") packageName = value
-                        if (name == "label") applicationLabel = value
+                    if (tagName == "manifest" && namespace == -1 && name == "package") {
+                        packageName = value
+                    } else if (tagName == "application" && name == "label") {
+                        applicationLabel = value
+                    } else if (namespace == -1) {
+                        if (name == "package" && packageName == null) packageName = value
+                        if (name == "label" && applicationLabel == null) applicationLabel = value
                     }
 
                     attrOffset += attributeSize
@@ -128,22 +134,39 @@ private class StringPool(
 
             return if (utf8) {
                 var p = start
-                val first = data[p++].toInt() and 0xff
-                if (first and 0x80 != 0) p++
-                val second = data[p++].toInt() and 0xff
-                if (second and 0x80 != 0) p++
-                val length = second
-                if (p + length > data.size) return ""
-                String(data, p, length, Charsets.UTF_8)
+                val charLen = readLength8(data, p)
+                p += length8Size(data, p)
+                if (p >= data.size) return ""
+                val byteLen = readLength8(data, p)
+                p += length8Size(data, p)
+                if (charLen < 0 || byteLen < 0 || p + byteLen > data.size) return ""
+                String(data, p, byteLen, Charsets.UTF_8)
             } else {
+                if (start + 2 > data.size) return ""
                 var p = start
                 val first = u16(data, p)
-                p += if (first and 0x8000 != 0) 4 else 2
-                val length = first and 0x7fff
+                val length = if (first and 0x8000 != 0) {
+                    if (p + 4 > data.size) return ""
+                    p += 4
+                    ((first and 0x7fff) shl 16) or u16(data, start + 2)
+                } else {
+                    p += 2
+                    first
+                }
                 if (p + length * 2 > data.size) return ""
                 String(data, p, length * 2, Charsets.UTF_16LE)
             }
         }
+
+        private fun readLength8(data: ByteArray, offset: Int): Int {
+            val first = data[offset].toInt() and 0xff
+            return if (first and 0x80 == 0) first
+            else if (offset + 1 < data.size) ((first and 0x7f) shl 8) or (data[offset + 1].toInt() and 0xff)
+            else 0
+        }
+
+        private fun length8Size(data: ByteArray, offset: Int): Int =
+            if ((data[offset].toInt() and 0xff) and 0x80 == 0) 1 else 2
 
         private fun u16(b: ByteArray, offset: Int): Int =
             ByteBuffer.wrap(b, offset, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt() and 0xffff

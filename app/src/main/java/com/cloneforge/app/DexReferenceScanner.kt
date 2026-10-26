@@ -38,7 +38,7 @@ class DexReferenceScanner {
 
     private fun isDexEntry(name: String): Boolean =
         name == "classes.dex" ||
-            Regex("classes[2-9][0-9]*\\.dex").matches(name)
+            Regex("classes([2-9]|[1-9][0-9]+)\\.dex").matches(name)
 
     private fun countAscii(data: ByteArray, value: String): Int {
         val needle = value.toByteArray(Charsets.US_ASCII)

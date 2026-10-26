@@ -28,10 +28,23 @@ class DexDescriptorVerifier {
         require(sourcePackage.isNotBlank()) { "Source package is empty." }
         require(clonePackage.isNotBlank()) { "Clone package is empty." }
 
-        val sourceDescriptor = "L${sourcePackage.replace('.', '/')};"
-        val cloneDescriptor = "L${clonePackage.replace('.', '/')};"
-        val sourceOccurrences = countAscii(data, sourceDescriptor)
-        val cloneOccurrences = countAscii(data, cloneDescriptor)
+        val sourcePath = sourcePackage.replace('.', '/')
+        val clonePath = clonePackage.replace('.', '/')
+        val sourceDescriptor = "L$sourcePath;"
+        val cloneDescriptor = "L$clonePath;"
+        val sourcePrefix = "L$sourcePath/"
+        val clonePrefix = "L$clonePath/"
+
+        val cloneExact = countAscii(data, cloneDescriptor)
+        val cloneNested = countAscii(data, clonePrefix)
+        val cloneOccurrences = cloneExact + cloneNested
+
+        val sourceExact = countAscii(data, sourceDescriptor)
+        val sourceNestedTotal = countAscii(data, sourcePrefix)
+        val overlappingCloneInSource =
+            (if (cloneDescriptor.startsWith(sourcePrefix)) cloneExact else 0) +
+                (if (clonePrefix.startsWith(sourcePrefix)) cloneNested else 0)
+        val sourceOccurrences = sourceExact + (sourceNestedTotal - overlappingCloneInSource).coerceAtLeast(0)
 
         return DexDescriptorVerification(
             sourceDescriptor = sourceDescriptor,
