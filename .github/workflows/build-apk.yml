@@ -81,7 +81,8 @@ jobs:
 
           RAW_APK="app/build/outputs/apk/release/app-release.apk"
           ALIGNED_APK="app/build/outputs/apk/release/CloneForge-aligned.apk"
-          FINAL_APK="app/build/outputs/apk/release/CloneForge-v1.3.1.apk"
+          FINAL_APK="app/build/outputs/apk/release/CloneForge-v1.3.2.apk"
+          V131_APK="app/build/outputs/apk/release/CloneForge-v1.3.1.apk"
           V130_APK="app/build/outputs/apk/release/CloneForge-v1.3.0.apk"
           V121_APK="app/build/outputs/apk/release/CloneForge-v1.2.1.apk"
           V120_APK="app/build/outputs/apk/release/CloneForge-v1.2.0.apk"
@@ -108,6 +109,7 @@ jobs:
           BADGING_OUT=$("$AAPT2" dump badging "$FINAL_APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|application:|application-icon-)" | tr '\n' ' ')
           echo "::notice title=ApkVerification::$VERIFY_OUT | $BADGING_OUT"
 
+          cp "$FINAL_APK" "$V131_APK"
           cp "$FINAL_APK" "$V130_APK"
           cp "$FINAL_APK" "$V121_APK"
           cp "$FINAL_APK" "$V120_APK"
@@ -116,9 +118,9 @@ jobs:
       - name: Upload CloneForge APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CloneForge-v1.3.1-apk
+          name: CloneForge-v1.3.2-apk
           path: |
-            app/build/outputs/apk/release/CloneForge-v1.3.1.apk
+            app/build/outputs/apk/release/CloneForge-v1.3.2.apk
             app/build/outputs/apk/release/CloneForge.apk
           if-no-files-found: error
 
@@ -127,18 +129,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if gh release view v1.3.2 >/dev/null 2>&1; then
+            gh release upload v1.3.2 \
+              app/build/outputs/apk/release/CloneForge-v1.3.2.apk \
+              app/build/outputs/apk/release/CloneForge.apk \
+              --clobber
+          else
+            gh release create v1.3.2 \
+              app/build/outputs/apk/release/CloneForge-v1.3.2.apk \
+              app/build/outputs/apk/release/CloneForge.apk \
+              --latest \
+              --title "CloneForge v1.3.2 (Official Signed APK)" \
+              --notes "Official signed Android APK of CloneForge v1.3.2 fixing startup crashes (including TikTok's 'Restore your experience' misconfiguration dialog) when cloning complex multi-split apps. Download **CloneForge-v1.3.2.apk** directly onto your Android phone to install."
+          fi
           if gh release view v1.3.1 >/dev/null 2>&1; then
             gh release upload v1.3.1 \
               app/build/outputs/apk/release/CloneForge-v1.3.1.apk \
               app/build/outputs/apk/release/CloneForge.apk \
               --clobber
-          else
-            gh release create v1.3.1 \
-              app/build/outputs/apk/release/CloneForge-v1.3.1.apk \
-              app/build/outputs/apk/release/CloneForge.apk \
-              --latest \
-              --title "CloneForge v1.3.1 (Official Signed APK)" \
-              --notes "Official signed Android APK of CloneForge v1.3.1 fixing 'Signed APK verification failed for com.zhiliaoapp.musically.clone1' on class-preserving multi-DEX / 68-split apps such as TikTok and ChatGPT. Download **CloneForge-v1.3.1.apk** directly onto your Android phone to install."
           fi
           if gh release view v1.3.0 >/dev/null 2>&1; then
             gh release upload v1.3.0 \
