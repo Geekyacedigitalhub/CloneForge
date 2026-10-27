@@ -1,6 +1,7 @@
 package com.cloneforge.app
 
 import android.content.Context
+import android.content.pm.PackageManager
 import java.io.File
 
 data class CloneArtifact(
@@ -68,7 +69,15 @@ class CloneService(private val context: Context) {
 
         stage = "source APK inspection"
         onProgress?.invoke("Inspecting source APK…")
-        val applicationInfo = context.packageManager.getApplicationInfo(sourcePackage, 0)
+        val applicationInfo = runCatching {
+            context.packageManager.getApplicationInfo(sourcePackage, 0)
+        }.getOrElse {
+            @Suppress("DEPRECATION")
+            context.packageManager.getApplicationInfo(
+                sourcePackage,
+                PackageManager.MATCH_UNINSTALLED_PACKAGES
+            )
+        }
         val source = engine.inspect(applicationInfo)
             ?: error("Unable to inspect the selected installed app.")
         val preflightResult = preflight.inspect(

@@ -73,11 +73,35 @@ class MainActivity : ComponentActivity() {
     private fun loadLaunchableApps(): List<InstalledApp> {
         val pm = packageManager
         val intent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
-        return pm.queryIntentActivities(intent, PackageManager.MATCH_ALL)
-            .mapNotNull { resolve ->
-                val info = resolve.activityInfo?.applicationInfo ?: return@mapNotNull null
+        val resolvedInfos = pm.queryIntentActivities(intent, PackageManager.MATCH_ALL)
+            .mapNotNull { it.activityInfo?.applicationInfo }
+            .toMutableList()
+
+        if (WorkProfileCloneManager.isRunningInWorkProfile(this)) {
+            @Suppress("DEPRECATION")
+            val allProfilesInfos = runCatching {
+                pm.getInstalledApplications(PackageManager.MATCH_UNINSTALLED_PACKAGES)
+            }.getOrDefault(emptyList())
+            for (info in allProfilesInfos) {
+                val isUserApp = (info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 ||
+                    (info.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                if (isUserApp && !info.sourceDir.isNullOrBlank() && File(info.sourceDir).exists()) {
+                    resolvedInfos.add(info)
+                }
+            }
+        }
+
+        return resolvedInfos
+            .distinctBy { it.packageName }
+            .mapNotNull { info ->
                 if (info.packageName == packageName) return@mapNotNull null
-                val version = runCatching { pm.getPackageInfo(info.packageName, 0).versionName ?: "unknown" }.getOrDefault("unknown")
+                val version = runCatching { pm.getPackageInfo(info.packageName, 0).versionName ?: "unknown" }
+                    .getOrElse {
+                        @Suppress("DEPRECATION")
+                        runCatching {
+                            pm.getPackageInfo(info.packageName, PackageManager.MATCH_UNINSTALLED_PACKAGES).versionName ?: "unknown"
+                        }.getOrDefault("unknown")
+                    }
                 InstalledApp(
                     label = pm.getApplicationLabel(info).toString(),
                     packageName = info.packageName,
@@ -85,7 +109,6 @@ class MainActivity : ComponentActivity() {
                     icon = drawableToBitmap(info.loadIcon(pm))
                 )
             }
-            .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
     }
 }
@@ -385,6 +408,73 @@ private fun CloneForgeApp(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item {
+                    val inWorkProfile = remember { WorkProfileCloneManager.isRunningInWorkProfile(context) }
+                    val hasWorkProfile = remember { WorkProfileCloneManager.hasManagedWorkProfile(context) }
+                    var workSpaceFeedback by remember { mutableStateOf<String?>(null) }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text(
+                                text = if (inWorkProfile) {
+                                    "Play Integrity Work Space Active"
+                                } else {
+                                    "Play Integrity Work Space (For ChatGPT, Google Sign-In & Banking Apps)"
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = if (inWorkProfile) {
+                                    "You are running inside CloneForge's isolated Work Space. Select any app below and tap 'Install Original-Signature Clone' to clone it with its 100% genuine Google Play signature so Play Integrity and login pass without errors."
+                                } else if (hasWorkProfile) {
+                                    "Your isolated Work Space is ready. Open CloneForge inside the Work Space to install 100% original-signature clones that pass Google Play Integrity and OAuth login."
+                                } else {
+                                    "Apps like ChatGPT verify their original Google Play hardware signature via Play Integrity during login. Enable the isolated Work Space to clone any app with its original signature intact."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            workSpaceFeedback?.let { msg ->
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = msg,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            if (!inWorkProfile) {
+                                Spacer(Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (hasWorkProfile) {
+                                        Button(onClick = {
+                                            val launched = WorkProfileCloneManager.openCloneForgeInWorkProfile(context)
+                                            if (!launched) {
+                                                workSpaceFeedback = "Open 'CloneForge' with the briefcase badge from your Work tab in the app drawer."
+                                            }
+                                        }) {
+                                            Text("Open Work Space Cloner")
+                                        }
+                                    } else {
+                                        Button(onClick = {
+                                            WorkProfileCloneManager.launchWorkProfileProvisioning(context)
+                                                .onFailure { err ->
+                                                    workSpaceFeedback = err.message ?: "Unable to start Work Space setup."
+                                                }
+                                        }) {
+                                            Text("Enable Play Integrity Work Space")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Installed Apps", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                         TextButton(
@@ -597,62 +687,119 @@ private fun CloneForgeApp(
                                 loadApplicationIcon(context, record.sourcePackage)
                             }
                             Card(Modifier.fillMaxWidth().clickable { selectedClone = record }) {
-                                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    sourceIcon?.let { icon ->
-                                        Image(
-                                            bitmap = icon.asImageBitmap(),
-                                            contentDescription = record.cloneName,
-                                            modifier = Modifier.size(52.dp)
-                                        )
-                                        Spacer(Modifier.width(14.dp))
+                                var rechecking by remember(record.apkPath, record.sha256) {
+                                    mutableStateOf(false)
+                                }
+                                Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        sourceIcon?.let { icon ->
+                                            Image(
+                                                bitmap = icon.asImageBitmap(),
+                                                contentDescription = record.cloneName,
+                                                modifier = Modifier.size(52.dp)
+                                            )
+                                            Spacer(Modifier.width(14.dp))
+                                        }
+                                        Column(Modifier.weight(1f)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    record.cloneName,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(
+                                                    if (record.clonePackage in installedPackages) "Installed" else "APK ready",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = if (record.clonePackage in installedPackages) {
+                                                        MaterialTheme.colorScheme.primary
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                                    }
+                                                )
+                                            }
+                                            Spacer(Modifier.height(2.dp))
+                                            Text(record.clonePackage, style = MaterialTheme.typography.bodySmall)
+                                            Text("Source: " + record.sourcePackage, style = MaterialTheme.typography.bodySmall)
+                                            Text(
+                                                "APK: " + file.name + " • " + formatFileSize(file.length()),
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                            Spacer(Modifier.height(6.dp))
+                                            val integrityTone = when {
+                                                integrityLabel.endsWith("Verified") -> MaterialTheme.colorScheme.primaryContainer
+                                                integrityLabel.endsWith("Checking…") -> MaterialTheme.colorScheme.secondaryContainer
+                                                integrityLabel.endsWith("Not checked") -> MaterialTheme.colorScheme.surfaceVariant
+                                                else -> MaterialTheme.colorScheme.errorContainer
+                                            }
+                                            val integrityTextColor = when {
+                                                integrityLabel.endsWith("Verified") -> MaterialTheme.colorScheme.onPrimaryContainer
+                                                integrityLabel.endsWith("Checking…") -> MaterialTheme.colorScheme.onSecondaryContainer
+                                                integrityLabel.endsWith("Not checked") -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                else -> MaterialTheme.colorScheme.onErrorContainer
+                                            }
+                                            Surface(
+                                                shape = MaterialTheme.shapes.small,
+                                                color = integrityTone
+                                            ) {
+                                                Text(
+                                                    integrityLabel.removePrefix("Integrity: "),
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = integrityTextColor
+                                                )
+                                            }
+                                            cloneLibrary.integrityDetail(record)?.let { detail ->
+                                                Spacer(Modifier.height(4.dp))
+                                                val isHealthyDetail = integrityLabel.endsWith("Verified")
+                                                Text(
+                                                    if (isHealthyDetail) detail else "Reason: $detail",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = if (isHealthyDetail) {
+                                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                                    } else {
+                                                        MaterialTheme.colorScheme.error
+                                                    }
+                                                )
+                                            }
+                                            if (record.sha256.isNotBlank()) {
+                                                Text("SHA-256: " + record.sha256.take(16) + "…", style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            Text(
+                                                "Created: " + DateFormat.getDateTimeInstance(
+                                                    DateFormat.MEDIUM,
+                                                    DateFormat.SHORT
+                                                ).format(Date(record.createdAt)),
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
                                     }
-                                    Column(Modifier.weight(1f)) {
-                                        Text(record.cloneName, style = MaterialTheme.typography.titleMedium)
-                                        Text(record.clonePackage, style = MaterialTheme.typography.bodySmall)
-                                        Text("Source: " + record.sourcePackage, style = MaterialTheme.typography.bodySmall)
-                                        Text("APK: " + file.name, style = MaterialTheme.typography.bodySmall)
-                                        Text("Size: " + formatFileSize(file.length()), style = MaterialTheme.typography.bodySmall)
-                                        val integrityTone = when {
-                                            integrityLabel.endsWith("Verified") -> MaterialTheme.colorScheme.primaryContainer
-                                            integrityLabel.endsWith("Checking…") -> MaterialTheme.colorScheme.secondaryContainer
-                                            integrityLabel.endsWith("Not checked") -> MaterialTheme.colorScheme.surfaceVariant
-                                            else -> MaterialTheme.colorScheme.errorContainer
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (record.clonePackage in installedPackages) {
+                                            TextButton(
+                                                onClick = { launchInstalledClone(context, record.clonePackage) },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                            ) {
+                                                Text("Open")
+                                            }
                                         }
-                                        val integrityTextColor = when {
-                                            integrityLabel.endsWith("Verified") -> MaterialTheme.colorScheme.onPrimaryContainer
-                                            integrityLabel.endsWith("Checking…") -> MaterialTheme.colorScheme.onSecondaryContainer
-                                            integrityLabel.endsWith("Not checked") -> MaterialTheme.colorScheme.onSurfaceVariant
-                                            else -> MaterialTheme.colorScheme.onErrorContainer
-                                        }
-                                        Surface(
-                                            shape = MaterialTheme.shapes.small,
-                                            color = integrityTone
+                                        TextButton(
+                                            onClick = { openCloneInstaller(context, file) },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                                         ) {
-                                            Text(
-                                                integrityLabel.removePrefix("Integrity: "),
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = integrityTextColor
-                                            )
-                                        }
-                                        cloneLibrary.integrityDetail(record)?.let { detail ->
-                                            Spacer(Modifier.height(4.dp))
-                                            val isHealthyDetail = integrityLabel.endsWith("Verified")
-                                            Text(
-                                                if (isHealthyDetail) detail else "Reason: $detail",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = if (isHealthyDetail) {
-                                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                                } else {
-                                                    MaterialTheme.colorScheme.error
-                                                }
-                                            )
-                                        }
-                                        if (record.sha256.isNotBlank()) {
-                                            Text("SHA-256: " + record.sha256.take(16) + "…", style = MaterialTheme.typography.bodySmall)
-                                        }
-                                        var rechecking by remember(record.apkPath, record.sha256) {
-                                            mutableStateOf(false)
+                                            Text(if (record.clonePackage in installedPackages) "Update" else "Install")
                                         }
                                         TextButton(
                                             onClick = {
@@ -680,42 +827,25 @@ private fun CloneForgeApp(
                                             enabled = !rechecking && !backupBusy && !importBusy,
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                                         ) {
-                                            Text(if (rechecking) "Checking…" else "Recheck integrity")
+                                            Text(if (rechecking) "Checking…" else "Verify")
                                         }
-                                        Text(
-                                            "Created: " + DateFormat.getDateTimeInstance(
-                                                DateFormat.MEDIUM,
-                                                DateFormat.SHORT
-                                            ).format(Date(record.createdAt)),
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                        Spacer(Modifier.height(4.dp))
-                                        Text(
-                                            if (record.clonePackage in installedPackages) "Installed" else "APK ready",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = if (record.clonePackage in installedPackages) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurfaceVariant
-                                            }
-                                        )
-                                    }
-                                    if (record.clonePackage in installedPackages) {
-                                        TextButton(onClick = { launchInstalledClone(context, record.clonePackage) }) {
-                                            Text("Open")
+                                        TextButton(
+                                            onClick = { shareCloneApk(context, file, record.cloneName, record.sourcePackage, record.clonePackage) },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                        ) {
+                                            Text("Share")
+                                        }
+                                        TextButton(
+                                            onClick = {
+                                                cloneLibrary.delete(record)
+                                                refreshLibrary()
+                                                deleteFeedback = "Removed clone ${record.cloneName} (${record.clonePackage})."
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                        ) {
+                                            Text("Delete")
                                         }
                                     }
-                                    TextButton(onClick = { openCloneInstaller(context, file) }) {
-                                        Text(
-                                            if (record.clonePackage in installedPackages) "Update" else "Install"
-                                        )
-                                    }
-                                    TextButton(onClick = { shareCloneApk(context, file, record.cloneName, record.sourcePackage, record.clonePackage) }) { Text("Share") }
-                                    TextButton(onClick = {
-                                        cloneLibrary.delete(record)
-                                        refreshLibrary()
-                                        deleteFeedback = "Removed clone ${record.cloneName} (${record.clonePackage})."
-                                    }) { Text("Delete") }
                                 }
                             }
                         }
@@ -1126,7 +1256,15 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
 
         val info = runCatching {
             context.packageManager.getApplicationInfo(app.packageName, 0)
-        }.getOrNull()
+        }.getOrElse {
+            @Suppress("DEPRECATION")
+            runCatching {
+                context.packageManager.getApplicationInfo(
+                    app.packageName,
+                    PackageManager.MATCH_UNINSTALLED_PACKAGES
+                )
+            }.getOrNull()
+        }
 
         if (info == null) {
             preflightError = "Unable to inspect the selected installed app."
@@ -1152,13 +1290,18 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
         }
     }
 
+    val inWorkProfile = remember { WorkProfileCloneManager.isRunningInWorkProfile(context) }
+    val hasWorkProfile = remember { WorkProfileCloneManager.hasManagedWorkProfile(context) }
+    var workInstallBusy by remember { mutableStateOf(false) }
+    var workInstallMessage by remember { mutableStateOf<String?>(null) }
+
     Column(
         modifier
             .fillMaxSize()
             .padding(24.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        TextButton(onClick = onBack, enabled = !busy) { Text("< Back") }
+        TextButton(onClick = onBack, enabled = !busy && !workInstallBusy) { Text("< Back") }
         Spacer(Modifier.height(8.dp))
         Text("Clone Setup", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(12.dp))
@@ -1187,7 +1330,102 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                 }
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            )
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text(
+                    "Option 1: Play Integrity Clone (Recommended for Login / ChatGPT / OAuth)",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (inWorkProfile) {
+                        "Installs the 100% unmodified original APK + Split APKs of ${app.label} into this isolated Work Space. Preserves the official Google Play signature so Play Integrity and sign-in always succeed."
+                    } else {
+                        "Apps like ChatGPT enforce Google Play Integrity hardware signature checks during login. Use CloneForge's isolated Work Space to clone ${app.label} with its 100% genuine Google Play signature intact."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                workInstallMessage?.let { msg ->
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        msg,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                if (inWorkProfile) {
+                    Button(
+                        onClick = {
+                            workInstallBusy = true
+                            workInstallMessage = "Preparing original-signature split APK session…"
+                            scope.launch {
+                                val res = withContext(Dispatchers.IO) {
+                                    WorkProfileCloneManager.installOriginalAppInCurrentProfile(
+                                        context,
+                                        app.packageName
+                                    )
+                                }
+                                workInstallBusy = false
+                                res.onSuccess { msg ->
+                                    workInstallMessage = msg
+                                }.onFailure { err ->
+                                    workInstallMessage = "Error: " + (err.message ?: "Unable to start installation.")
+                                }
+                            }
+                        },
+                        enabled = !workInstallBusy && !busy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            if (workInstallBusy) {
+                                "Installing Original-Signature Clone…"
+                            } else {
+                                "Install Original-Signature Clone (Passes Play Integrity)"
+                            }
+                        )
+                    }
+                } else if (hasWorkProfile) {
+                    Button(
+                        onClick = {
+                            val opened = WorkProfileCloneManager.openCloneForgeInWorkProfile(context)
+                            if (!opened) {
+                                workInstallMessage = "Open 'CloneForge' (with the briefcase badge) in your Work app drawer tab to install ${app.label} with its original signature."
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Switch to Work Space to Clone with Original Signature")
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            WorkProfileCloneManager.launchWorkProfileProvisioning(context)
+                                .onFailure { err ->
+                                    workInstallMessage = err.message ?: "Unable to start Work Space setup."
+                                }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Enable Play Integrity Work Space (1-Time Setup)")
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+        Text(
+            "Option 2: Standalone Rebuilt APK (.clone1)",
+            style = MaterialTheme.typography.titleMedium
+        )
+        Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             value = cloneName,
             onValueChange = {

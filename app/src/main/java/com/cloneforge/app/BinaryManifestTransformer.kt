@@ -7,7 +7,8 @@ import java.nio.ByteOrder
 data class ManifestRewriteResult(
     val data: ByteArray,
     val packageChanged: Boolean,
-    val labelChanged: Boolean
+    val labelChanged: Boolean,
+    val stringReplacements: Map<String, String> = emptyMap()
 )
 
 class BinaryManifestTransformer {
@@ -18,7 +19,8 @@ class BinaryManifestTransformer {
         clonePackage: String,
         cloneLabel: String,
         versionName: String? = null,
-        versionCode: Int? = null
+        versionCode: Int? = null,
+        preserveClasses: Boolean = false
     ): Result<ManifestRewriteResult> {
         return runCatching {
             require(sourcePackage.isNotBlank()) { "Source package is empty." }
@@ -27,7 +29,7 @@ class BinaryManifestTransformer {
 
             val preparedManifest = ensureExtractNativeLibsAttribute(manifest)
             val editor = BinaryXmlEditor(preparedManifest)
-            editor.replaceManifestPackage(sourcePackage, clonePackage)
+            editor.replaceManifestPackage(sourcePackage, clonePackage, preserveClasses)
             editor.replaceApplicationLabel(cloneLabel)
             editor.clearSplitRequiredFlags()
             versionName?.trim()?.takeIf { it.isNotEmpty() }?.let {
@@ -440,57 +442,73 @@ private class BinaryXmlEditor(private val original: ByteArray) {
     private val replacements = mutableMapOf<Int, Int>()
     private val intReplacements = mutableMapOf<Int, Int>()
     private val booleanReplacements = mutableMapOf<Int, Boolean>()
+    private val explicitStringReplacements = mutableMapOf<String, String>()
     private var packageReplacement = false
     private var labelReplacement = false
 
     data class Chunk(val offset: Int, val type: Int, val headerSize: Int, val size: Int)
 
-    fun replaceManifestPackage(source: String, target: String) {
+    fun replaceManifestPackage(source: String, target: String, preserveClasses: Boolean = false) {
         val index = findString(source)
         require(index >= 0) { "Source package was not found in the manifest string pool." }
 
         val sourcePrefix = "$source."
         val targetPrefix = "$target."
-        for (i in strings.indices) {
-            val current = strings[i]
-            if (current == source) {
-                strings[i] = target
-                stringIndexes[target] = i
-                packageReplacement = true
-            } else if (current.contains(';')) {
-                val parts = current.split(';')
-                var changed = false
-                val updatedParts = parts.map { part ->
-                    when {
-                        part == target || part.startsWith(targetPrefix) -> part
-                        part == source -> {
-                            changed = true
-                            target
-                        }
-                        part.startsWith(sourcePrefix) -> {
-                            changed = true
-                            targetPrefix + part.removePrefix(sourcePrefix)
-                        }
-                        else -> part
-                    }
+        if (preserveClasses) {
+            expandRelativeComponentNames(source)
+            rewriteProviderAuthoritiesAndPermissions(source, target)
+            val dynPerm = "$source.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+            val dynPermTarget = "$target.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+            explicitStringReplacements[dynPerm] = dynPermTarget
+            for (i in strings.indices) {
+                val s = strings[i]
+                val mapped = explicitStringReplacements[s]
+                if (mapped != null && mapped != s) {
+                    strings[i] = mapped
+                    stringIndexes[mapped] = i
                 }
-                if (changed) {
-                    val updated = updatedParts.joinToString(";")
+            }
+        } else {
+            for (i in strings.indices) {
+                val current = strings[i]
+                if (current == source) {
+                    strings[i] = target
+                    stringIndexes[target] = i
+                    packageReplacement = true
+                } else if (current.contains(';')) {
+                    val parts = current.split(';')
+                    var changed = false
+                    val updatedParts = parts.map { part ->
+                        when {
+                            part == target || part.startsWith(targetPrefix) -> part
+                            part == source -> {
+                                changed = true
+                                target
+                            }
+                            part.startsWith(sourcePrefix) -> {
+                                changed = true
+                                targetPrefix + part.removePrefix(sourcePrefix)
+                            }
+                            else -> part
+                        }
+                    }
+                    if (changed) {
+                        val updated = updatedParts.joinToString(";")
+                        strings[i] = updated
+                        stringIndexes[updated] = i
+                        packageReplacement = true
+                    }
+                } else if (current != target && !current.startsWith(targetPrefix) && current.startsWith(sourcePrefix)) {
+                    val updated = targetPrefix + current.removePrefix(sourcePrefix)
                     strings[i] = updated
                     stringIndexes[updated] = i
                     packageReplacement = true
                 }
-            } else if (current != target && !current.startsWith(targetPrefix) && current.startsWith(sourcePrefix)) {
-                val updated = targetPrefix + current.removePrefix(sourcePrefix)
-                strings[i] = updated
-                stringIndexes[updated] = i
-                packageReplacement = true
             }
+
+            stringIndexes.remove(source)
+            rewriteProviderAuthoritiesAndPermissions(source, target)
         }
-
-        stringIndexes.remove(source)
-
-        rewriteProviderAuthoritiesAndPermissions(source, target)
 
         val targetIndex = indexFor(target)
 
@@ -498,6 +516,54 @@ private class BinaryXmlEditor(private val original: ByteArray) {
             replacements[it] = targetIndex
             packageReplacement = true
         } ?: error("Manifest package attribute was not found.")
+    }
+
+    private fun expandRelativeComponentNames(sourcePackage: String) {
+        ensureStringPool()
+        val componentTags = setOf("application", "activity", "activity-alias", "service", "receiver", "provider")
+        var offset = readU16(original, 2)
+        while (offset + 8 <= original.size) {
+            val type = readU16(original, offset)
+            val headerSize = readU16(original, offset + 2)
+            val size = readU32(original, offset + 4).toInt()
+            if (size <= 0 || offset + size > original.size) break
+
+            if (type == 0x0102 && offset + 36 <= original.size) {
+                val tagName = strings.getOrNull(readU32(original, offset + 20).toInt())
+                if (tagName in componentTags) {
+                    val attributeStart = readU16(original, offset + 24)
+                    val attributeSize = readU16(original, offset + 26)
+                    val attributeCount = readU16(original, offset + 28)
+                    var attr = offset + headerSize + attributeStart
+
+                    repeat(attributeCount) {
+                        if (attr + attributeSize > offset + size || attributeSize < 20) return@repeat
+                        val attrNameIndex = readU32(original, attr + 4).toInt()
+                        if (matchesAttribute(attrNameIndex, "name", 0x01010003) ||
+                            matchesAttribute(attrNameIndex, "targetActivity", 0x01010202)
+                        ) {
+                            val rawValueIdx = readU32(original, attr + 8).toInt()
+                            val dataType = original[attr + 15].toInt() and 0xff
+                            val dataIdx = readU32(original, attr + 16).toInt()
+                            val strIdx = if (rawValueIdx in strings.indices) rawValueIdx else if (dataType == 0x03 && dataIdx in strings.indices) dataIdx else -1
+                            if (strIdx in strings.indices) {
+                                val current = strings[strIdx]
+                                val expanded = when {
+                                    current.startsWith(".") -> "$sourcePackage$current"
+                                    current.isNotBlank() && !current.contains(".") -> "$sourcePackage.$current"
+                                    else -> current
+                                }
+                                if (expanded != current) {
+                                    replacements[attr + 8] = indexFor(expanded)
+                                }
+                            }
+                        }
+                        attr += attributeSize
+                    }
+                }
+            }
+            offset += size
+        }
     }
 
     fun replaceApplicationLabel(label: String) {
@@ -593,12 +659,17 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                             if (strIdx in strings.indices) {
                                 val current = strings[strIdx]
                                 val updated = current.split(';').joinToString(";") { part ->
-                                    when {
+                                    val mapped = when {
                                         part.isBlank() || part == target || part.startsWith(targetPrefix) -> part
                                         part == source -> target
                                         part.startsWith(sourcePrefix) -> targetPrefix + part.removePrefix(sourcePrefix)
                                         else -> targetPrefix + part
                                     }
+                                    if (mapped != part && part.isNotBlank()) {
+                                        explicitStringReplacements[part] = mapped
+                                        explicitStringReplacements["content://$part"] = "content://$mapped"
+                                    }
+                                    mapped
                                 }
                                 if (updated != current) {
                                     strings[strIdx] = updated
@@ -627,6 +698,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                                     } else {
                                         targetPrefix + current
                                     }
+                                    explicitStringReplacements[current] = updated
                                     strings[strIdx] = updated
                                     stringIndexes[updated] = strIdx
                                 }
@@ -697,7 +769,8 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         return ManifestRewriteResult(
             data = result,
             packageChanged = packageReplacement,
-            labelChanged = labelReplacement
+            labelChanged = labelReplacement,
+            stringReplacements = explicitStringReplacements.toMap()
         )
     }
 

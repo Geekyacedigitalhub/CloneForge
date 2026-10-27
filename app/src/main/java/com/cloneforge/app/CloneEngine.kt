@@ -19,7 +19,12 @@ class CloneEngine(
 ) {
     fun inspect(info: ApplicationInfo): ApkSource? {
         val pm = context.packageManager
-        val packageInfo = runCatching { pm.getPackageInfo(info.packageName, 0) }.getOrNull() ?: return null
+        val packageInfo = runCatching { pm.getPackageInfo(info.packageName, 0) }.getOrNull()
+            ?: runCatching {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(info.packageName, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
+            }.getOrNull()
+            ?: return null
         val source = File(info.sourceDir ?: return null)
         if (!source.exists() || !source.isFile) return null
         val splits = info.splitSourceDirs

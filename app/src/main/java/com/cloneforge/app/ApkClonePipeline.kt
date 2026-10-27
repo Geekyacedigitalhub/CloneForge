@@ -54,6 +54,8 @@ class ApkClonePipeline(
             "AndroidManifest.xml was not found in the APK."
         }
 
+        val preserveClasses = plan.sourcePackage != "com.cloneforge.fixture"
+
         val originalManifest = manifestFile.readBytes()
         val rewrite = manifestTransformer.rewrite(
             manifest = originalManifest,
@@ -61,13 +63,14 @@ class ApkClonePipeline(
             clonePackage = plan.clonePackage,
             cloneLabel = plan.cloneName,
             versionName = plan.customVersionName,
-            versionCode = plan.customVersionCode
+            versionCode = plan.customVersionCode,
+            preserveClasses = preserveClasses
         ).getOrThrow()
 
         manifestFile.writeBytes(rewrite.data)
 
         val resourcesFile = File(workspace.unpackedDir, "resources.arsc")
-        val arscRewriteCount = if (resourcesFile.exists() && resourcesFile.isFile) {
+        val arscRewriteCount = if (!preserveClasses && resourcesFile.exists() && resourcesFile.isFile) {
             val arscRewrite = arscPackageRewriter.rewrite(
                 arscBytes = resourcesFile.readBytes(),
                 sourcePackage = plan.sourcePackage,
@@ -81,13 +84,22 @@ class ApkClonePipeline(
             0
         }
 
-        val textRewrite = plainTextRewriter.rewrite(
-            unpackedDir = workspace.unpackedDir,
-            sourcePackage = plan.sourcePackage,
-            clonePackage = plan.clonePackage
-        )
+        val textReplacements = if (!preserveClasses) {
+            plainTextRewriter.rewrite(
+                unpackedDir = workspace.unpackedDir,
+                sourcePackage = plan.sourcePackage,
+                clonePackage = plan.clonePackage
+            ).replacements
+        } else {
+            0
+        }
 
-        val dexSummary = rewriteDexFiles(workspace.unpackedDir, plan)
+        val dexSummary = rewriteDexFiles(
+            unpackedDir = workspace.unpackedDir,
+            plan = plan,
+            preserveClasses = preserveClasses,
+            exactStringReplacements = rewrite.stringReplacements
+        )
         val iconCustomization = iconCustomizer.customize(workspace.unpackedDir, plan.iconTint)
 
         val output = workspaceManager.outputApk(
@@ -100,7 +112,8 @@ class ApkClonePipeline(
             apkFile = output,
             sourcePackage = plan.sourcePackage,
             clonePackage = plan.clonePackage,
-            requireCloneDescriptors = dexSummary.descriptorReplacements > 0
+            requireCloneDescriptors = dexSummary.descriptorReplacements > 0,
+            preserveClasses = preserveClasses
         )
         require(verification.verified) {
             "Final APK verification failed: manifestPackage=${verification.manifestPackage}, " +
@@ -118,7 +131,7 @@ class ApkClonePipeline(
                 rewrite.labelChanged ||
                 arscRewriteCount > 0 ||
                 iconCustomization.iconsModified > 0 ||
-                textRewrite.replacements > 0 ||
+                textReplacements > 0 ||
                 dexSummary.totalReplacements > 0
         )
     }
@@ -128,16 +141,23 @@ class ApkClonePipeline(
         val descriptorReplacements: Int
     )
 
-    private fun rewriteDexFiles(unpackedDir: File, plan: ClonePlan): DexBatchSummary {
+    private fun rewriteDexFiles(
+        unpackedDir: File,
+        plan: ClonePlan,
+        preserveClasses: Boolean = false,
+        exactStringReplacements: Map<String, String> = emptyMap()
+    ): DexBatchSummary {
         var totalReplacements = 0
         var descriptorReplacements = 0
         unpackedDir.walkTopDown()
             .filter { it.isFile && it.name.matches(Regex("classes([2-9]|[1-9][0-9]+)?\\.dex")) }
             .forEach { dex ->
                 val res = dexPackageRewriter.rewrite(
-                    dex,
-                    plan.sourcePackage,
-                    plan.clonePackage
+                    dexFile = dex,
+                    sourcePackage = plan.sourcePackage,
+                    clonePackage = plan.clonePackage,
+                    preserveClasses = preserveClasses,
+                    exactStringReplacements = exactStringReplacements
                 ).getOrThrow()
                 totalReplacements += res.replacements
                 descriptorReplacements += res.descriptorReplacements

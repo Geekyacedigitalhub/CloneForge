@@ -37,7 +37,9 @@ class DexPackageRewriter(
     fun rewrite(
         dexFile: File,
         sourcePackage: String,
-        clonePackage: String
+        clonePackage: String,
+        preserveClasses: Boolean = false,
+        exactStringReplacements: Map<String, String> = emptyMap()
     ): Result<DexRewriteResult> = runCatching {
         require(dexFile.exists() && dexFile.isFile) { "DEX file does not exist." }
         require(sourcePackage.isNotBlank()) { "Source package is empty." }
@@ -51,9 +53,13 @@ class DexPackageRewriter(
 
         val initialBytes = dexFile.readBytes()
         val initialVerification = verifier.verifyBytes(initialBytes, sourcePackage, clonePackage)
-        val hasSourcePackageBytes = initialVerification.sourceOccurrences > 0 ||
-            containsAscii(initialBytes, sourcePackage) ||
-            containsAscii(initialBytes, sourcePath)
+        val hasSourcePackageBytes = if (preserveClasses) {
+            exactStringReplacements.keys.any { key -> key.isNotEmpty() && containsAscii(initialBytes, key) }
+        } else {
+            initialVerification.sourceOccurrences > 0 ||
+                containsAscii(initialBytes, sourcePackage) ||
+                containsAscii(initialBytes, sourcePath)
+        }
 
         if (!hasSourcePackageBytes) {
             return@runCatching DexRewriteResult(
@@ -75,10 +81,19 @@ class DexPackageRewriter(
         var descriptorReplacements = 0
         var stringReplacements = 0
 
+        fun transformString(raw: String): String {
+            return if (preserveClasses) {
+                exactStringReplacements[raw] ?: raw
+            } else {
+                rewritePackageString(raw, sourcePackage, clonePackage)
+            }
+        }
+
         val rewriter = DexRewriter(object : RewriterModule() {
             override fun getTypeRewriter(rewriters: Rewriters): Rewriter<String> =
                 object : TypeRewriter() {
                     override fun rewriteUnwrappedType(value: String): String {
+                        if (preserveClasses) return value
                         val rewritten = when {
                             value == sourceDescriptor -> cloneDescriptor
                             value.startsWith(sourcePrefix) -> clonePrefix + value.removePrefix(sourcePrefix)
@@ -95,7 +110,7 @@ class DexPackageRewriter(
                         val base = super.rewrite(instruction)
                         if (instruction is Instruction21c && instruction.referenceType == ReferenceType.STRING) {
                             val ref = instruction.reference as? StringReference ?: return base
-                            val updated = rewritePackageString(ref.string, sourcePackage, clonePackage)
+                            val updated = transformString(ref.string)
                             if (updated != ref.string) {
                                 stringReplacements++
                                 return ImmutableInstruction21c(
@@ -106,7 +121,7 @@ class DexPackageRewriter(
                             }
                         } else if (instruction is Instruction31c && instruction.referenceType == ReferenceType.STRING) {
                             val ref = instruction.reference as? StringReference ?: return base
-                            val updated = rewritePackageString(ref.string, sourcePackage, clonePackage)
+                            val updated = transformString(ref.string)
                             if (updated != ref.string) {
                                 stringReplacements++
                                 return ImmutableInstruction31c(
@@ -124,7 +139,7 @@ class DexPackageRewriter(
                 object : EncodedValueRewriter(rewriters) {
                     override fun rewrite(encodedValue: EncodedValue): EncodedValue {
                         if (encodedValue is StringEncodedValue) {
-                            val updated = rewritePackageString(encodedValue.value, sourcePackage, clonePackage)
+                            val updated = transformString(encodedValue.value)
                             if (updated != encodedValue.value) {
                                 stringReplacements++
                                 return ImmutableStringEncodedValue(updated)
@@ -151,8 +166,10 @@ class DexPackageRewriter(
 
         val totalReplacements = descriptorReplacements + stringReplacements
         val verification = verifier.verify(dexFile, sourcePackage, clonePackage)
-        val dexVerified = verification.sourceOccurrences == 0 &&
-            (descriptorReplacements == 0 || verification.cloneOccurrences > 0)
+        val dexVerified = preserveClasses || (
+            verification.sourceOccurrences == 0 &&
+                (descriptorReplacements == 0 || verification.cloneOccurrences > 0)
+            )
         if (!dexVerified) {
             error(
                 "DEX rewrite verification failed: original descriptor occurrences=" +
