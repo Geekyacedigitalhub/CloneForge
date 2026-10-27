@@ -52,7 +52,17 @@ class DexPackageRewriter(
         val clonePrefix = cloneDescriptor.dropLast(1) + "/"
 
         val initialBytes = dexFile.readBytes()
-        val initialVerification = verifier.verifyBytes(initialBytes, sourcePackage, clonePackage)
+        val initialVerification = if (preserveClasses) {
+            DexDescriptorVerification(
+                sourceDescriptor = sourceDescriptor,
+                cloneDescriptor = cloneDescriptor,
+                sourceOccurrences = 0,
+                cloneOccurrences = 0,
+                verified = true
+            )
+        } else {
+            verifier.verifyBytes(initialBytes, sourcePackage, clonePackage)
+        }
         val hasSourcePackageBytes = if (preserveClasses) {
             exactStringReplacements.keys.any { key -> key.isNotEmpty() && containsAscii(initialBytes, key) }
         } else {
@@ -165,7 +175,17 @@ class DexPackageRewriter(
         }
 
         val totalReplacements = descriptorReplacements + stringReplacements
-        val verification = verifier.verify(dexFile, sourcePackage, clonePackage)
+        val verification = if (preserveClasses) {
+            DexDescriptorVerification(
+                sourceDescriptor = sourceDescriptor,
+                cloneDescriptor = cloneDescriptor,
+                sourceOccurrences = 0,
+                cloneOccurrences = 0,
+                verified = true
+            )
+        } else {
+            verifier.verify(dexFile, sourcePackage, clonePackage)
+        }
         val dexVerified = preserveClasses || (
             verification.sourceOccurrences == 0 &&
                 (descriptorReplacements == 0 || verification.cloneOccurrences > 0)

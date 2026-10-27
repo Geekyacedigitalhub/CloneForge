@@ -605,26 +605,43 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                 }
             }
         }
-        findStartTagAttribute("manifest", "isSplitRequired", 0x01010591)?.let {
-            booleanReplacements[it] = false
-        }
-        findStartTagAttribute("application", "isSplitRequired", 0x01010591)?.let {
-            booleanReplacements[it] = false
-        }
-        findStartTagAttribute("manifest", "requiredSplitTypes", 0x0101064e)?.let {
-            replacements[it] = indexFor("")
-        }
-        findStartTagAttribute("manifest", "splitTypes", 0x0101064f)?.let {
-            replacements[it] = indexFor("")
-        }
-        findStartTagAttribute("application", "requiredSplitTypes", 0x0101064e)?.let {
-            replacements[it] = indexFor("")
-        }
-        findStartTagAttribute("application", "splitTypes", 0x0101064f)?.let {
-            replacements[it] = indexFor("")
-        }
-        findStartTagAttribute("application", "extractNativeLibs", 0x010104ea)?.let {
-            booleanReplacements[it] = true
+
+        var offset = readU16(original, 2)
+        while (offset + 8 <= original.size) {
+            val type = readU16(original, offset)
+            val headerSize = readU16(original, offset + 2)
+            val size = readU32(original, offset + 4).toInt()
+            if (size <= 0 || offset + size > original.size) break
+
+            if (type == 0x0102 && offset + 36 <= original.size) {
+                val tagName = strings.getOrNull(readU32(original, offset + 20).toInt())
+                val attributeStart = readU16(original, offset + 24)
+                val attributeSize = readU16(original, offset + 26)
+                val attributeCount = readU16(original, offset + 28)
+                var attr = offset + headerSize + attributeStart
+
+                repeat(attributeCount) {
+                    if (attr + attributeSize > offset + size || attributeSize < 20) return@repeat
+                    val attrNameIndex = readU32(original, attr + 4).toInt()
+                    when {
+                        matchesAttribute(attrNameIndex, "isSplitRequired", 0x01010591) ||
+                            matchesAttribute(attrNameIndex, "isolatedSplits", 0x0101054b) -> {
+                            booleanReplacements[attr + 8] = false
+                        }
+                        matchesAttribute(attrNameIndex, "requiredSplitTypes", 0x0101064e) ||
+                            matchesAttribute(attrNameIndex, "splitTypes", 0x0101064f) ||
+                            matchesAttribute(attrNameIndex, "splitName", 0x01010549) ||
+                            (tagName == "manifest" && matchesAttribute(attrNameIndex, "sharedUserId", 0x0101000b)) -> {
+                            replacements[attr + 8] = indexFor("")
+                        }
+                        tagName == "application" && matchesAttribute(attrNameIndex, "extractNativeLibs", 0x010104ea) -> {
+                            booleanReplacements[attr + 8] = true
+                        }
+                    }
+                    attr += attributeSize
+                }
+            }
+            offset += size
         }
     }
 
@@ -666,14 +683,19 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                                         else -> targetPrefix + part
                                     }
                                     if (mapped != part && part.isNotBlank()) {
-                                        explicitStringReplacements[part] = mapped
+                                        if (part != source) {
+                                            explicitStringReplacements[part] = mapped
+                                        }
                                         explicitStringReplacements["content://$part"] = "content://$mapped"
                                     }
                                     mapped
                                 }
                                 if (updated != current) {
-                                    strings[strIdx] = updated
-                                    stringIndexes[updated] = strIdx
+                                    if (current != source) {
+                                        strings[strIdx] = updated
+                                        stringIndexes[updated] = strIdx
+                                    }
+                                    replacements[attr + 8] = indexFor(updated)
                                 }
                             }
                         }
@@ -698,9 +720,12 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                                     } else {
                                         targetPrefix + current
                                     }
-                                    explicitStringReplacements[current] = updated
-                                    strings[strIdx] = updated
-                                    stringIndexes[updated] = strIdx
+                                    if (current != source) {
+                                        explicitStringReplacements[current] = updated
+                                        strings[strIdx] = updated
+                                        stringIndexes[updated] = strIdx
+                                    }
+                                    replacements[attr + 8] = indexFor(updated)
                                 }
                             }
                         }

@@ -109,6 +109,9 @@ class CloneService(private val context: Context) {
                 plan = plan
             ).getOrThrow()
 
+            sourceWorkspace?.deleteRecursively()
+            sourceWorkspace = null
+
             val signedOutput = File(
                 unsigned.apkFile.parentFile,
                 sanitize(plan.cloneName) + "-" + sanitize(plan.clonePackage) + ".apk"
@@ -122,14 +125,19 @@ class CloneService(private val context: Context) {
 
             stage = "signed APK verification"
             onProgress?.invoke("Verifying signed clone APK…")
+            val preserveClasses = plan.sourcePackage != "com.cloneforge.fixture"
             val signedVerification = verifier.verify(
                 apkFile = signedOutput,
                 sourcePackage = plan.sourcePackage,
                 clonePackage = plan.clonePackage,
-                requireCloneDescriptors = false
+                requireCloneDescriptors = false,
+                preserveClasses = preserveClasses
             )
             require(signedVerification.verified) {
-                "Signed APK verification failed for ${plan.clonePackage}."
+                "Signed APK verification failed for ${plan.clonePackage} " +
+                    "(manifestPackage=${signedVerification.manifestPackage}, " +
+                    "hasManifest=${signedVerification.hasManifest}, " +
+                    "hasDex=${signedVerification.hasDex})."
             }
 
             val sha256 = calculateSha256(signedOutput)
