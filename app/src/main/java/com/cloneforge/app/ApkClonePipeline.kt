@@ -164,7 +164,13 @@ class ApkClonePipeline(
                         DexRewriteResult(
                             changed = false,
                             replacements = 0,
-                            verification = DexDescriptorVerification(0, 0, true),
+                            verification = DexDescriptorVerification(
+                                sourceDescriptor = "",
+                                cloneDescriptor = "",
+                                sourceOccurrences = 0,
+                                cloneOccurrences = 0,
+                                verified = true
+                            ),
                             outputFile = dex,
                             descriptorReplacements = 0,
                             stringReplacements = 0
