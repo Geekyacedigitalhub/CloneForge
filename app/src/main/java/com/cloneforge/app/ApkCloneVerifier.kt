@@ -22,7 +22,8 @@ class ApkCloneVerifier(
         apkFile: File,
         sourcePackage: String,
         clonePackage: String,
-        requireCloneDescriptors: Boolean = true
+        requireCloneDescriptors: Boolean = true,
+        preserveClasses: Boolean = false
     ): ApkCloneVerification {
         require(apkFile.exists() && apkFile.isFile) { "APK file does not exist." }
 
@@ -51,21 +52,25 @@ class ApkCloneVerifier(
                 .forEach { entry ->
                     hasDex = true
                     dexFilesChecked++
-                    val verification = DexDescriptorVerifier().verifyBytes(
-                        zip.getInputStream(entry).use { it.readBytes() },
-                        sourcePackage,
-                        clonePackage
-                    )
-                    sourceOccurrences += verification.sourceOccurrences
-                    cloneOccurrences += verification.cloneOccurrences
+                    if (!preserveClasses) {
+                        val verification = DexDescriptorVerifier().verifyBytes(
+                            zip.getInputStream(entry).use { it.readBytes() },
+                            sourcePackage,
+                            clonePackage
+                        )
+                        sourceOccurrences += verification.sourceOccurrences
+                        cloneOccurrences += verification.cloneOccurrences
+                    }
                 }
         }
 
         val verified = hasManifest &&
             hasDex &&
             manifestPackage == clonePackage &&
-            sourceOccurrences == 0 &&
-            (!requireCloneDescriptors || cloneOccurrences > 0)
+            (preserveClasses || (
+                sourceOccurrences == 0 &&
+                    (!requireCloneDescriptors || cloneOccurrences > 0)
+                ))
 
         return ApkCloneVerification(
             manifestPackage = manifestPackage,

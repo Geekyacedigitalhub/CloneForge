@@ -5,6 +5,7 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
         android:icon="@mipmap/ic_launcher"
@@ -23,6 +24,23 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <receiver
+            android:name=".CloneForgeAdminReceiver"
+            android:label="CloneForge"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
+                <action android:name="android.app.action.MANAGED_PROFILE_PROVISIONED" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".CloneInstallReceiver"
+            android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

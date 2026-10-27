@@ -83,6 +83,38 @@ class BinaryManifestTransformerTest {
         assertTrue(result.isFailure)
     }
 
+    @Test
+    fun `rewrite with preserveClasses expands relative activity name and preserves source classes`() {
+        val manifestBytes = buildTestBinaryManifest(
+            packageName = "com.openai.chatgpt",
+            appLabel = "ChatGPT",
+            activityName = ".MainActivity"
+        )
+
+        val result = BinaryManifestTransformer().rewrite(
+            manifest = manifestBytes,
+            sourcePackage = "com.openai.chatgpt",
+            clonePackage = "com.openai.chatgpt.clone1",
+            cloneLabel = "ChatGPT Clone",
+            preserveClasses = true
+        ).getOrThrow()
+
+        assertTrue(result.packageChanged)
+        val parsed = BinaryManifestReader().read(result.data)
+        assertEquals("com.openai.chatgpt.clone1", parsed.packageName)
+        assertEquals("ChatGPT Clone", parsed.applicationLabel)
+        assertTrue(parsed.stringPool.contains("com.openai.chatgpt.MainActivity"))
+        assertTrue(parsed.stringPool.contains("com.openai.chatgpt.clone1.fileprovider"))
+        assertEquals(
+            "com.openai.chatgpt.clone1.fileprovider",
+            result.stringReplacements["com.openai.chatgpt.fileprovider"]
+        )
+        assertEquals(
+            "content://com.openai.chatgpt.clone1.fileprovider",
+            result.stringReplacements["content://com.openai.chatgpt.fileprovider"]
+        )
+    }
+
     private fun hasExtractNativeLibsTrue(manifest: ByteArray): Boolean {
         val little = ByteOrder.LITTLE_ENDIAN
         fun u16(off: Int): Int = ByteBuffer.wrap(manifest, off, 2).order(little).short.toInt() and 0xffff
