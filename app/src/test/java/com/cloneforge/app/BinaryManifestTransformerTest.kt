@@ -58,7 +58,10 @@ class BinaryManifestTransformerTest {
         val rewrittenInfo = BinaryManifestReader().read(rewrite.data)
         assertEquals("com.openai.chatgpt.clone1", rewrittenInfo.packageName)
         assertEquals("ChatGPT Clone", rewrittenInfo.applicationLabel)
-        assertTrue(rewrittenInfo.activities.contains("com.openai.chatgpt.clone1.MainActivity"))
+        assertTrue(
+            "Expected rewritten activity name in manifest bytes",
+            String(rewrite.data, Charsets.UTF_16LE).contains("com.openai.chatgpt.clone1.MainActivity")
+        )
         assertTrue("Expected extractNativeLibs=true on <application>", hasExtractNativeLibsTrue(rewrite.data))
     }
 

@@ -44,8 +44,10 @@ jobs:
           EXIT_CODE=$?
           cat build.log
           if [ $EXIT_CODE -ne 0 ]; then
+            COMPILER_ERR=$(grep -E "^e: " build.log | tr '\n' ' ' | sed 's/  */ /g' | cut -c 1-3500)
             JUNIT_ERR=$(cat app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g' | cut -c 1-3500)
             TAIL_ERR=$(tail -n 60 build.log | tr '\n' ' ' | sed 's/  */ /g' | cut -c 1-3500)
+            echo "::error title=CompilerError::$COMPILER_ERR"
             echo "::error title=JUnitReport::$JUNIT_ERR"
             echo "::error title=GradleTail::$TAIL_ERR"
             exit $EXIT_CODE
