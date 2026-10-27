@@ -170,8 +170,7 @@ class ApkClonePipeline(
                         entry.crc = crc
                         val nameBytes = relative.toByteArray(Charsets.UTF_8)
                         val dataStart = countingOut.bytesWritten + 30L + nameBytes.size
-                        val alignment = if (relative.endsWith(".so")) 4096L else 4L
-                        val padding = ((alignment - (dataStart % alignment)) % alignment).toInt()
+                        val padding = ((4 - (dataStart % 4)) % 4).toInt()
                         if (padding > 0) {
                             entry.extra = ByteArray(padding)
                         }
@@ -188,8 +187,7 @@ class ApkClonePipeline(
     }
 
     private fun shouldStoreUncompressed(path: String): Boolean =
-        path == "resources.arsc" ||
-            (path.startsWith("lib/") && path.endsWith(".so"))
+        path == "resources.arsc"
 
     private fun isOldSignatureEntry(path: String): Boolean {
         if (!path.startsWith("META-INF/", ignoreCase = true)) return false
