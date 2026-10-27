@@ -110,7 +110,7 @@ object WorkProfileCloneManager {
                 true
             }.getOrDefault(false)
             if (enabledBySystem && runCatching { pm.getPackageInfo(packageName, 0) }.isSuccess) {
-                return@runCatching "${source.appLabel} enabled in Work Space with its original signature!"
+                return@runCatching "${source.label} enabled in Work Space with its original signature!"
             }
         }
 
@@ -141,7 +141,7 @@ object WorkProfileCloneManager {
 
             val callbackIntent = Intent(context, CloneInstallReceiver::class.java).apply {
                 setPackage(context.packageName)
-                putExtra("appLabel", source.appLabel)
+                putExtra("appLabel", source.label)
                 putExtra("packageName", source.packageName)
             }
             val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or
@@ -160,6 +160,6 @@ object WorkProfileCloneManager {
         } else {
             ""
         }
-        "Installing original-signature ${source.appLabel} (base.apk$splitLabel) in Work Space…"
+        "Installing original-signature ${source.label} (base.apk$splitLabel) in Work Space…"
     }
 }
