@@ -47,12 +47,13 @@ class ApkCloneVerifier(
                 ).packageName
             }
 
+            val skipDescriptorScan = preserveClasses || !requireCloneDescriptors
             zip.entries().asSequence()
                 .filter { it.name.matches(Regex("classes([2-9]|[1-9][0-9]+)?\\.dex")) }
                 .forEach { entry ->
                     hasDex = true
                     dexFilesChecked++
-                    if (!preserveClasses) {
+                    if (!skipDescriptorScan) {
                         val verification = DexDescriptorVerifier().verifyBytes(
                             zip.getInputStream(entry).use { it.readBytes() },
                             sourcePackage,
@@ -64,10 +65,11 @@ class ApkCloneVerifier(
                 }
         }
 
+        val skipDescriptorScan = preserveClasses || !requireCloneDescriptors
         val verified = hasManifest &&
             hasDex &&
             manifestPackage == clonePackage &&
-            (preserveClasses || (
+            (skipDescriptorScan || (
                 sourceOccurrences == 0 &&
                     (!requireCloneDescriptors || cloneOccurrences > 0)
                 ))

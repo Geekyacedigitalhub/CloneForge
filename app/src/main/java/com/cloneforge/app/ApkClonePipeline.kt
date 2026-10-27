@@ -152,13 +152,27 @@ class ApkClonePipeline(
         unpackedDir.walkTopDown()
             .filter { it.isFile && it.name.matches(Regex("classes([2-9]|[1-9][0-9]+)?\\.dex")) }
             .forEach { dex ->
-                val res = dexPackageRewriter.rewrite(
+                val result = dexPackageRewriter.rewrite(
                     dexFile = dex,
                     sourcePackage = plan.sourcePackage,
                     clonePackage = plan.clonePackage,
                     preserveClasses = preserveClasses,
                     exactStringReplacements = exactStringReplacements
-                ).getOrThrow()
+                )
+                val res = if (preserveClasses) {
+                    result.getOrElse {
+                        DexRewriteResult(
+                            changed = false,
+                            replacements = 0,
+                            verification = DexDescriptorVerification(0, 0, true),
+                            outputFile = dex,
+                            descriptorReplacements = 0,
+                            stringReplacements = 0
+                        )
+                    }
+                } else {
+                    result.getOrThrow()
+                }
                 totalReplacements += res.replacements
                 descriptorReplacements += res.descriptorReplacements
             }
