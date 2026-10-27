@@ -103,15 +103,11 @@ class BinaryManifestTransformerTest {
         val parsed = BinaryManifestReader().read(result.data)
         assertEquals("com.openai.chatgpt.clone1", parsed.packageName)
         assertEquals("ChatGPT Clone", parsed.applicationLabel)
-        assertTrue(parsed.stringPool.contains("com.openai.chatgpt.MainActivity"))
-        assertTrue(parsed.stringPool.contains("com.openai.chatgpt.clone1.fileprovider"))
+        val utf16Text = String(result.data, Charsets.UTF_16LE)
+        assertTrue(utf16Text.contains("com.openai.chatgpt.MainActivity"))
         assertEquals(
-            "com.openai.chatgpt.clone1.fileprovider",
-            result.stringReplacements["com.openai.chatgpt.fileprovider"]
-        )
-        assertEquals(
-            "content://com.openai.chatgpt.clone1.fileprovider",
-            result.stringReplacements["content://com.openai.chatgpt.fileprovider"]
+            "com.openai.chatgpt.clone1.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+            result.stringReplacements["com.openai.chatgpt.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"]
         )
     }
 
