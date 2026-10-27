@@ -84,14 +84,14 @@ class ApkClonePipeline(
             0
         }
 
-        val textRewrite = if (!preserveClasses) {
+        val textReplacements = if (!preserveClasses) {
             plainTextRewriter.rewrite(
                 unpackedDir = workspace.unpackedDir,
                 sourcePackage = plan.sourcePackage,
                 clonePackage = plan.clonePackage
-            )
+            ).replacements
         } else {
-            ApkPlainTextRewriteSummary(filesScanned = 0, filesModified = 0, replacements = 0)
+            0
         }
 
         val dexSummary = rewriteDexFiles(
@@ -131,7 +131,7 @@ class ApkClonePipeline(
                 rewrite.labelChanged ||
                 arscRewriteCount > 0 ||
                 iconCustomization.iconsModified > 0 ||
-                textRewrite.replacements > 0 ||
+                textReplacements > 0 ||
                 dexSummary.totalReplacements > 0
         )
     }

@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.CrossProfileApps
 import android.content.pm.LauncherApps
 import android.content.pm.PackageInstaller
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
 import android.os.UserManager
@@ -22,7 +23,7 @@ object WorkProfileCloneManager {
         return runCatching { dpm.isProfileOwnerApp(context.packageName) }.getOrDefault(false)
     }
 
-    fun hasWorkProfile(context: Context): Boolean {
+    fun hasManagedWorkProfile(context: Context): Boolean {
         if (isRunningInWorkProfile(context)) return true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val crossProfile = context.getSystemService(Context.CROSS_PROFILE_APPS_SERVICE) as? CrossProfileApps
@@ -34,38 +35,37 @@ object WorkProfileCloneManager {
         return runCatching { um.userProfiles.size > 1 }.getOrDefault(false)
     }
 
-    fun openCloneForgeInWorkProfile(context: Context): Result<Unit> = runCatching {
+    fun openCloneForgeInWorkProfile(context: Context): Boolean = runCatching {
         val component = ComponentName(context, MainActivity::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val crossProfile = context.getSystemService(Context.CROSS_PROFILE_APPS_SERVICE) as? CrossProfileApps
             val target = crossProfile?.targetUserProfiles?.firstOrNull()
             if (crossProfile != null && target != null) {
                 crossProfile.startMainActivity(component, target)
-                return@runCatching
+                return@runCatching true
             }
         }
         val um = context.getSystemService(Context.USER_SERVICE) as? UserManager
-            ?: error("UserManager is unavailable.")
+            ?: return@runCatching false
         val launcherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as? LauncherApps
-            ?: error("LauncherApps is unavailable.")
+            ?: return@runCatching false
         val myHandle = Process.myUserHandle()
         val otherHandle = um.userProfiles.firstOrNull { it != myHandle }
-            ?: error("Work Space profile was not found. Please enable Work Space first.")
+            ?: return@runCatching false
         launcherApps.startMainActivity(component, otherHandle, null, null)
-    }
+        true
+    }.getOrDefault(false)
 
-    fun provisionWorkProfile(context: Context): Result<Unit> = runCatching {
+    fun launchWorkProfileProvisioning(context: Context): Result<Unit> = runCatching {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
             ?: error("DevicePolicyManager is unavailable on this device.")
         if (!dpm.isProvisioningAllowed(DevicePolicyManager.ACTION_PROVISION_MANAGED_PROFILE)) {
-            if (hasWorkProfile(context)) {
-                openCloneForgeInWorkProfile(context).getOrThrow()
+            if (hasManagedWorkProfile(context) && openCloneForgeInWorkProfile(context)) {
                 return@runCatching
             }
             error(
                 "A Work Profile already exists on this phone (for example from Island or Shelter). " +
-                    "Remove the existing Work Profile in Android Settings -> Accounts / Users first, " +
-                    "or open CloneForge inside that Work Profile."
+                    "Open CloneForge inside your Work tab, or remove the existing Work Profile in Android Settings -> Accounts / Users first."
             )
         }
         val adminComponent = ComponentName(context, CloneForgeAdminReceiver::class.java)
@@ -88,9 +88,31 @@ object WorkProfileCloneManager {
      * are 100% preserved, so Google Play Integrity (`Preauth PlayIntegrity`), OAuth,
      * Google Sign-In, and JNI native libraries work without any issues.
      */
-    fun installOriginalSignedApp(context: Context, source: ApkSource): Result<String> = runCatching {
+    fun installOriginalAppInCurrentProfile(
+        context: Context,
+        packageName: String
+    ): Result<String> = runCatching {
+        val pm = context.packageManager
+        val appInfo = runCatching {
+            pm.getApplicationInfo(packageName, 0)
+        }.getOrElse {
+            @Suppress("DEPRECATION")
+            pm.getApplicationInfo(packageName, PackageManager.MATCH_UNINSTALLED_PACKAGES)
+        }
+        val source = CloneEngine(context).inspect(appInfo)
+            ?: error("Unable to locate original APK files for $packageName.")
+
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
         val admin = ComponentName(context, CloneForgeAdminReceiver::class.java)
+        if (dpm != null && isRunningInWorkProfile(context)) {
+            val enabledBySystem = runCatching {
+                dpm.enableSystemApp(admin, packageName)
+                true
+            }.getOrDefault(false)
+            if (enabledBySystem && runCatching { pm.getPackageInfo(packageName, 0) }.isSuccess) {
+                return@runCatching "${source.appLabel} enabled in Work Space with its original signature!"
+            }
+        }
 
         val allApkFiles = buildList {
             add(source.sourceApk)
@@ -100,7 +122,7 @@ object WorkProfileCloneManager {
             "Original APK files for ${source.packageName} could not be accessed."
         }
 
-        val packageInstaller = context.packageManager.packageInstaller
+        val packageInstaller = pm.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(source.packageName)
         }
@@ -119,13 +141,11 @@ object WorkProfileCloneManager {
 
             val callbackIntent = Intent(context, CloneInstallReceiver::class.java).apply {
                 setPackage(context.packageName)
-                putExtra(PackageInstaller.EXTRA_PACKAGE_NAME, source.label)
+                putExtra("appLabel", source.appLabel)
+                putExtra("packageName", source.packageName)
             }
-            val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
+            val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
                 sessionId,
@@ -135,10 +155,11 @@ object WorkProfileCloneManager {
             session.commit(pendingIntent.intentSender)
         }
 
-        if (dpm != null && dpm.isProfileOwnerApp(context.packageName)) {
-            runCatching { dpm.enableSystemApp(admin, source.packageName) }
+        val splitLabel = if (source.splitApks.isNotEmpty()) {
+            " + ${source.splitApks.size} split APKs"
+        } else {
+            ""
         }
-
-        "Installing original-signature clone of ${source.label} (${allApkFiles.size} APK file(s))…"
+        "Installing original-signature ${source.appLabel} (base.apk$splitLabel) in Work Space…"
     }
 }

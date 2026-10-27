@@ -1,6 +1,7 @@
 package com.cloneforge.app
 
 import android.content.Context
+import android.content.pm.PackageManager
 import java.io.File
 
 data class CloneArtifact(
