@@ -73,8 +73,8 @@ jobs:
 
           RAW_APK="app/build/outputs/apk/release/app-release.apk"
           ALIGNED_APK="app/build/outputs/apk/release/CloneForge-aligned.apk"
-          FINAL_APK="app/build/outputs/apk/release/CloneForge.apk"
-          COMPAT_APK="app/build/outputs/apk/release/CloneForge-debug.apk"
+          FINAL_APK="app/build/outputs/apk/release/CloneForge-v1.2.0.apk"
+          COMPAT_APK="app/build/outputs/apk/release/CloneForge.apk"
 
           zip -d "$RAW_APK" "META-INF/*" || true
           "$ZIPALIGN" -p -f 4 "$RAW_APK" "$ALIGNED_APK"
@@ -102,10 +102,10 @@ jobs:
       - name: Upload CloneForge APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CloneForge-apk
+          name: CloneForge-v1.2.0-apk
           path: |
+            app/build/outputs/apk/release/CloneForge-v1.2.0.apk
             app/build/outputs/apk/release/CloneForge.apk
-            app/build/outputs/apk/release/CloneForge-debug.apk
           if-no-files-found: error
 
       - name: Publish APK to GitHub Releases
@@ -113,15 +113,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view v1.0.0 >/dev/null 2>&1; then
-            gh release upload v1.0.0 \
+          if gh release view v1.2.0 >/dev/null 2>&1; then
+            gh release upload v1.2.0 \
+              app/build/outputs/apk/release/CloneForge-v1.2.0.apk \
               app/build/outputs/apk/release/CloneForge.apk \
-              app/build/outputs/apk/release/CloneForge-debug.apk \
               --clobber
           else
-            gh release create v1.0.0 \
+            gh release create v1.2.0 \
+              app/build/outputs/apk/release/CloneForge-v1.2.0.apk \
               app/build/outputs/apk/release/CloneForge.apk \
-              app/build/outputs/apk/release/CloneForge-debug.apk \
-              --title "CloneForge v1.1.0 (Official Signed APK)" \
-              --notes "Automated Android APK build of CloneForge with custom app icon and V1+V2+V3 release signing. Download **CloneForge.apk** directly onto your Android device to install."
+              --latest \
+              --title "CloneForge v1.2.0 (Official Signed APK)" \
+              --notes "Official signed Android APK of CloneForge v1.2.0 with multi-DEX + split-APK cloning fixes and custom launcher icon. Download **CloneForge-v1.2.0.apk** directly onto your Android phone to install."
           fi
