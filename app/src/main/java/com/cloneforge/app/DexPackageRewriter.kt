@@ -64,7 +64,10 @@ class DexPackageRewriter(
             verifier.verifyBytes(initialBytes, sourcePackage, clonePackage)
         }
         val hasSourcePackageBytes = if (preserveClasses) {
-            exactStringReplacements.keys.any { key -> key.isNotEmpty() && containsAscii(initialBytes, key) }
+            containsAscii(initialBytes, sourcePackage) ||
+                exactStringReplacements.entries.any { (key, value) ->
+                    key.isNotEmpty() && key != value && containsAscii(initialBytes, key)
+                }
         } else {
             initialVerification.sourceOccurrences > 0 ||
                 containsAscii(initialBytes, sourcePackage) ||
@@ -82,10 +85,35 @@ class DexPackageRewriter(
             )
         }
 
-        val original = runCatching {
-            DexFileFactory.loadDexFile(dexFile, null as Opcodes?)
+        val isDexMagic = initialBytes.size >= 8 &&
+            initialBytes[0] == 'd'.code.toByte() &&
+            initialBytes[1] == 'e'.code.toByte() &&
+            initialBytes[2] == 'x'.code.toByte() &&
+            initialBytes[3] == '\n'.code.toByte()
+        val parsedDexVersion = if (isDexMagic) {
+            String(initialBytes, 4, 3, Charsets.US_ASCII).toIntOrNull() ?: 39
+        } else {
+            39
+        }
+        // dexlib2 2.5.2 only recognizes DEX header versions 035..039 in DexUtil.verifyDexHeader;
+        // DEX 040/041 share the exact binary layout of DEX 039.
+        if (isDexMagic && parsedDexVersion > 39) {
+            initialBytes[4] = '0'.code.toByte()
+            initialBytes[5] = '3'.code.toByte()
+            initialBytes[6] = '9'.code.toByte()
+            dexFile.writeBytes(initialBytes)
+        }
+
+        val opcodes = runCatching {
+            Opcodes.forDexVersion(parsedDexVersion.coerceIn(35, 39))
         }.getOrElse {
-            DexFileFactory.loadDexFile(dexFile, Opcodes.getDefault())
+            Opcodes.forDexVersion(39)
+        }
+
+        val original = runCatching {
+            DexFileFactory.loadDexFile(dexFile, opcodes)
+        }.getOrElse {
+            DexFileFactory.loadDexFile(dexFile, Opcodes.forDexVersion(39))
         }
 
         var descriptorReplacements = 0
@@ -93,7 +121,8 @@ class DexPackageRewriter(
 
         fun transformString(raw: String): String {
             return if (preserveClasses) {
-                exactStringReplacements[raw] ?: raw
+                exactStringReplacements[raw]
+                    ?: rewritePreservingClassNames(raw, sourcePackage, clonePackage)
             } else {
                 rewritePackageString(raw, sourcePackage, clonePackage)
             }
@@ -248,6 +277,57 @@ class DexPackageRewriter(
             value.startsWith(sourceContentPrefix) -> cloneContentPrefix + value.removePrefix(sourceContentPrefix)
             else -> value
         }
+    }
+
+    internal fun rewritePreservingClassNames(
+        value: String,
+        sourcePackage: String,
+        clonePackage: String
+    ): String {
+        val sourceDotPrefix = "$sourcePackage."
+        val cloneDotPrefix = "$clonePackage."
+        val sourceColonPrefix = "$sourcePackage:"
+        val cloneColonPrefix = "$clonePackage:"
+        val sourceContentUri = "content://$sourcePackage"
+        val cloneContentUri = "content://$clonePackage"
+        val sourceContentPrefix = "content://$sourcePackage."
+        val cloneContentPrefix = "content://$clonePackage."
+
+        return when {
+            value == clonePackage ||
+                value.startsWith(cloneDotPrefix) ||
+                value.startsWith(cloneColonPrefix) ||
+                value == cloneContentUri ||
+                value.startsWith(cloneContentPrefix) -> value
+            value == sourcePackage -> clonePackage
+            value.startsWith(sourceColonPrefix) -> cloneColonPrefix + value.removePrefix(sourceColonPrefix)
+            value == sourceContentUri -> cloneContentUri
+            value.startsWith(sourceContentPrefix) -> cloneContentPrefix + value.removePrefix(sourceContentPrefix)
+            value.startsWith(sourceDotPrefix) -> {
+                val suffix = value.removePrefix(sourceDotPrefix)
+                if (suffix.isNotEmpty() && !looksLikeJavaClassSuffix(suffix)) {
+                    cloneDotPrefix + suffix
+                } else {
+                    value
+                }
+            }
+            else -> value
+        }
+    }
+
+    private fun looksLikeJavaClassSuffix(suffix: String): Boolean {
+        val segments = suffix.split('.')
+        if (segments.any { it.isEmpty() }) return true
+        for (seg in segments) {
+            val first = seg[0]
+            if (first in 'A'..'Z') {
+                val isAllCapsConstant = seg.all { it in 'A'..'Z' || it in '0'..'9' || it == '_' }
+                if (!isAllCapsConstant) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     private fun containsAscii(data: ByteArray, value: String): Boolean {

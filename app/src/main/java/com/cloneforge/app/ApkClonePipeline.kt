@@ -70,7 +70,7 @@ class ApkClonePipeline(
         manifestFile.writeBytes(rewrite.data)
 
         val resourcesFile = File(workspace.unpackedDir, "resources.arsc")
-        val arscRewriteCount = if (!preserveClasses && resourcesFile.exists() && resourcesFile.isFile) {
+        val arscRewriteCount = if (resourcesFile.exists() && resourcesFile.isFile) {
             val arscRewrite = arscPackageRewriter.rewrite(
                 arscBytes = resourcesFile.readBytes(),
                 sourcePackage = plan.sourcePackage,

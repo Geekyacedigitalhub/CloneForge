@@ -111,6 +111,72 @@ class BinaryManifestTransformerTest {
         )
     }
 
+    @Test
+    fun `preserveClasses keeps provider class name when authorities shares same StringPool index`() {
+        val manifestBytes = buildProviderSharedStringIndexManifest(
+            packageName = "com.zhiliaoapp.musically",
+            appLabel = "TikTok",
+            sharedClassAndAuthority = "com.zhiliaoapp.musically.SharedProvider",
+            processName = "com.zhiliaoapp.musically:push"
+        )
+
+        val result = BinaryManifestTransformer().rewrite(
+            manifest = manifestBytes,
+            sourcePackage = "com.zhiliaoapp.musically",
+            clonePackage = "com.zhiliaoapp.musically.clone1",
+            cloneLabel = "TikTok Clone",
+            preserveClasses = true
+        ).getOrThrow()
+
+        val utf16Text = String(result.data, Charsets.UTF_16LE)
+        assertTrue(
+            "Original provider class name must remain in StringPool",
+            utf16Text.contains("com.zhiliaoapp.musically.SharedProvider")
+        )
+        assertTrue(
+            "Rewritten provider authority must be added to StringPool",
+            utf16Text.contains("com.zhiliaoapp.musically.clone1.SharedProvider")
+        )
+        assertTrue(
+            "Rewritten process name must be added to StringPool",
+            utf16Text.contains("com.zhiliaoapp.musically.clone1:push")
+        )
+
+        val rewriter = DexPackageRewriter()
+        assertEquals(
+            "com.zhiliaoapp.musically.MainActivity",
+            rewriter.rewritePreservingClassNames(
+                "com.zhiliaoapp.musically.MainActivity",
+                "com.zhiliaoapp.musically",
+                "com.zhiliaoapp.musically.clone1"
+            )
+        )
+        assertEquals(
+            "com.zhiliaoapp.musically.clone1",
+            rewriter.rewritePreservingClassNames(
+                "com.zhiliaoapp.musically",
+                "com.zhiliaoapp.musically",
+                "com.zhiliaoapp.musically.clone1"
+            )
+        )
+        assertEquals(
+            "com.zhiliaoapp.musically.clone1.fileprovider",
+            rewriter.rewritePreservingClassNames(
+                "com.zhiliaoapp.musically.fileprovider",
+                "com.zhiliaoapp.musically",
+                "com.zhiliaoapp.musically.clone1"
+            )
+        )
+        assertEquals(
+            "com.zhiliaoapp.musically.clone1:miniapp0",
+            rewriter.rewritePreservingClassNames(
+                "com.zhiliaoapp.musically:miniapp0",
+                "com.zhiliaoapp.musically",
+                "com.zhiliaoapp.musically.clone1"
+            )
+        )
+    }
+
     private fun hasExtractNativeLibsTrue(manifest: ByteArray): Boolean {
         val little = ByteOrder.LITTLE_ENDIAN
         fun u16(off: Int): Int = ByteBuffer.wrap(manifest, off, 2).order(little).short.toInt() and 0xffff
@@ -393,6 +459,120 @@ class BinaryManifestTransformerTest {
             put(0)
             put(0x03)
             putInt(attrValue)
+        }.array()
+    }
+
+    private fun buildProviderSharedStringIndexManifest(
+        packageName: String,
+        appLabel: String,
+        sharedClassAndAuthority: String,
+        processName: String
+    ): ByteArray {
+        val strings = listOf(
+            "http://schemas.android.com/apk/res/android", // 0
+            "manifest",                                    // 1
+            "package",                                     // 2
+            packageName,                                   // 3
+            "application",                                 // 4
+            "label",                                       // 5
+            appLabel,                                      // 6
+            "provider",                                    // 7
+            "name",                                        // 8
+            "authorities",                                 // 9
+            sharedClassAndAuthority,                       // 10 (shared by both name and authorities!)
+            "process",                                     // 11
+            processName                                    // 12
+        )
+
+        val encodedStrings = strings.map { value ->
+            val chars = value.toCharArray()
+            ByteBuffer.allocate(2 + chars.size * 2 + 2).order(ByteOrder.LITTLE_ENDIAN).apply {
+                putShort(chars.size.toShort())
+                chars.forEach { putShort(it.code.toShort()) }
+                putShort(0)
+            }.array()
+        }
+
+        val headerSize = 28
+        val offsetsSize = strings.size * 4
+        val stringsStart = headerSize + offsetsSize
+        val stringsDataSize = encodedStrings.sumOf { it.size }
+        val poolSize = (stringsStart + stringsDataSize + 3) and -4
+
+        val poolChunk = ByteBuffer.allocate(poolSize).order(ByteOrder.LITTLE_ENDIAN).apply {
+            putShort(0x0001)
+            putShort(headerSize.toShort())
+            putInt(poolSize)
+            putInt(strings.size)
+            putInt(0)
+            putInt(0)
+            putInt(stringsStart)
+            putInt(0)
+
+            var cursor = 0
+            encodedStrings.forEach { bytes ->
+                putInt(cursor)
+                cursor += bytes.size
+            }
+            encodedStrings.forEach { bytes ->
+                put(bytes)
+            }
+        }.array()
+
+        val manifestTag = buildStartTag(tagIndex = 1, attrNamespace = -1, attrName = 2, attrValue = 3)
+        val applicationTag = buildStartTag(tagIndex = 4, attrNamespace = 0, attrName = 5, attrValue = 6)
+
+        // <provider android:name="@10" android:authorities="@10" android:process="@12">
+        val providerChunkSize = 16 + 20 + 3 * 20
+        val providerTag = ByteBuffer.allocate(providerChunkSize).order(ByteOrder.LITTLE_ENDIAN).apply {
+            putShort(0x0102)
+            putShort(16)
+            putInt(providerChunkSize)
+            putInt(1)
+            putInt(-1)
+            putInt(-1)
+            putInt(7) // "provider"
+            putShort(20)
+            putShort(20)
+            putShort(3) // 3 attributes
+            putShort(0)
+            putShort(0)
+            putShort(0)
+            // Attr 0: android:name = 10
+            putInt(0)
+            putInt(8)
+            putInt(10)
+            putShort(8)
+            put(0)
+            put(0x03)
+            putInt(10)
+            // Attr 1: android:authorities = 10 (same StringPool index!)
+            putInt(0)
+            putInt(9)
+            putInt(10)
+            putShort(8)
+            put(0)
+            put(0x03)
+            putInt(10)
+            // Attr 2: android:process = 12
+            putInt(0)
+            putInt(11)
+            putInt(12)
+            putShort(8)
+            put(0)
+            put(0x03)
+            putInt(12)
+        }.array()
+
+        val totalSize = 8 + poolChunk.size + manifestTag.size + applicationTag.size + providerTag.size
+        return ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN).apply {
+            putShort(0x0003)
+            putShort(8)
+            putInt(totalSize)
+            put(poolChunk)
+            put(manifestTag)
+            put(applicationTag)
+            put(providerTag)
         }.array()
     }
 }

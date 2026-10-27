@@ -443,6 +443,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
     private val intReplacements = mutableMapOf<Int, Int>()
     private val booleanReplacements = mutableMapOf<Int, Boolean>()
     private val explicitStringReplacements = mutableMapOf<String, String>()
+    private val componentClassNames = mutableSetOf<String>()
     private var packageReplacement = false
     private var labelReplacement = false
 
@@ -455,19 +456,18 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         val sourcePrefix = "$source."
         val targetPrefix = "$target."
         if (preserveClasses) {
-            expandRelativeComponentNames(source)
-            rewriteProviderAuthoritiesAndPermissions(source, target)
             val dynPerm = "$source.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
             val dynPermTarget = "$target.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
             explicitStringReplacements[dynPerm] = dynPermTarget
-            for (i in strings.indices) {
-                val s = strings[i]
-                val mapped = explicitStringReplacements[s]
-                if (mapped != null && mapped != s) {
-                    strings[i] = mapped
-                    stringIndexes[mapped] = i
-                }
+
+            expandRelativeComponentNames(source)
+            rewriteProcessAndTaskAffinity(source, target)
+            rewriteProviderAuthoritiesAndPermissions(source, target, preserveClasses = true)
+
+            componentClassNames.forEach { className ->
+                explicitStringReplacements[className] = className
             }
+            explicitStringReplacements[source] = target
         } else {
             for (i in strings.indices) {
                 val current = strings[i]
@@ -507,7 +507,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
             }
 
             stringIndexes.remove(source)
-            rewriteProviderAuthoritiesAndPermissions(source, target)
+            rewriteProviderAuthoritiesAndPermissions(source, target, preserveClasses = false)
         }
 
         val targetIndex = indexFor(target)
@@ -520,7 +520,15 @@ private class BinaryXmlEditor(private val original: ByteArray) {
 
     private fun expandRelativeComponentNames(sourcePackage: String) {
         ensureStringPool()
-        val componentTags = setOf("application", "activity", "activity-alias", "service", "receiver", "provider")
+        val componentTags = setOf(
+            "application",
+            "activity",
+            "activity-alias",
+            "service",
+            "receiver",
+            "provider",
+            "instrumentation"
+        )
         var offset = readU16(original, 2)
         while (offset + 8 <= original.size) {
             val type = readU16(original, offset)
@@ -540,7 +548,11 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                         if (attr + attributeSize > offset + size || attributeSize < 20) return@repeat
                         val attrNameIndex = readU32(original, attr + 4).toInt()
                         if (matchesAttribute(attrNameIndex, "name", 0x01010003) ||
-                            matchesAttribute(attrNameIndex, "targetActivity", 0x01010202)
+                            matchesAttribute(attrNameIndex, "targetActivity", 0x01010202) ||
+                            matchesAttribute(attrNameIndex, "parentActivityName", 0x010103a7) ||
+                            matchesAttribute(attrNameIndex, "backupAgent", 0x0101027f) ||
+                            matchesAttribute(attrNameIndex, "manageSpaceActivity", 0x01010004) ||
+                            matchesAttribute(attrNameIndex, "appComponentFactory", 0x01010578)
                         ) {
                             val rawValueIdx = readU32(original, attr + 8).toInt()
                             val dataType = original[attr + 15].toInt() and 0xff
@@ -553,6 +565,9 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                                     current.isNotBlank() && !current.contains(".") -> "$sourcePackage.$current"
                                     else -> current
                                 }
+                                if (expanded.isNotBlank()) {
+                                    componentClassNames.add(expanded)
+                                }
                                 if (expanded != current) {
                                     replacements[attr + 8] = indexFor(expanded)
                                 }
@@ -560,6 +575,57 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                         }
                         attr += attributeSize
                     }
+                }
+            }
+            offset += size
+        }
+    }
+
+    private fun rewriteProcessAndTaskAffinity(source: String, target: String) {
+        ensureStringPool()
+        val sourceDot = "$source."
+        val targetDot = "$target."
+        val sourceColon = "$source:"
+        val targetColon = "$target:"
+
+        var offset = readU16(original, 2)
+        while (offset + 8 <= original.size) {
+            val type = readU16(original, offset)
+            val headerSize = readU16(original, offset + 2)
+            val size = readU32(original, offset + 4).toInt()
+            if (size <= 0 || offset + size > original.size) break
+
+            if (type == 0x0102 && offset + 36 <= original.size) {
+                val attributeStart = readU16(original, offset + 24)
+                val attributeSize = readU16(original, offset + 26)
+                val attributeCount = readU16(original, offset + 28)
+                var attr = offset + headerSize + attributeStart
+
+                repeat(attributeCount) {
+                    if (attr + attributeSize > offset + size || attributeSize < 20) return@repeat
+                    val attrNameIndex = readU32(original, attr + 4).toInt()
+                    if (matchesAttribute(attrNameIndex, "process", 0x01010011) ||
+                        matchesAttribute(attrNameIndex, "taskAffinity", 0x01010012) ||
+                        matchesAttribute(attrNameIndex, "targetPackage", 0x01010021)
+                    ) {
+                        val rawValueIdx = readU32(original, attr + 8).toInt()
+                        val dataType = original[attr + 15].toInt() and 0xff
+                        val dataIdx = readU32(original, attr + 16).toInt()
+                        val strIdx = if (rawValueIdx in strings.indices) rawValueIdx else if (dataType == 0x03 && dataIdx in strings.indices) dataIdx else -1
+                        if (strIdx in strings.indices) {
+                            val current = strings[strIdx]
+                            val updated = when {
+                                current == source -> target
+                                current.startsWith(sourceColon) -> targetColon + current.removePrefix(sourceColon)
+                                current.startsWith(sourceDot) -> targetDot + current.removePrefix(sourceDot)
+                                else -> current
+                            }
+                            if (updated != current) {
+                                replacements[attr + 8] = indexFor(updated)
+                            }
+                        }
+                    }
+                    attr += attributeSize
                 }
             }
             offset += size
@@ -645,7 +711,11 @@ private class BinaryXmlEditor(private val original: ByteArray) {
         }
     }
 
-    private fun rewriteProviderAuthoritiesAndPermissions(source: String, target: String) {
+    private fun rewriteProviderAuthoritiesAndPermissions(
+        source: String,
+        target: String,
+        preserveClasses: Boolean = false
+    ) {
         ensureStringPool()
         val sourcePrefix = "$source."
         val targetPrefix = "$target."
@@ -691,7 +761,7 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                                     mapped
                                 }
                                 if (updated != current) {
-                                    if (current != source) {
+                                    if (!preserveClasses && current != source) {
                                         strings[strIdx] = updated
                                         stringIndexes[updated] = strIdx
                                     }
@@ -722,8 +792,10 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                                     }
                                     if (current != source) {
                                         explicitStringReplacements[current] = updated
-                                        strings[strIdx] = updated
-                                        stringIndexes[updated] = strIdx
+                                        if (!preserveClasses) {
+                                            strings[strIdx] = updated
+                                            stringIndexes[updated] = strIdx
+                                        }
                                     }
                                     replacements[attr + 8] = indexFor(updated)
                                 }
@@ -731,6 +803,54 @@ private class BinaryXmlEditor(private val original: ByteArray) {
                         }
                         attr += attributeSize
                     }
+                }
+            }
+            offset += size
+        }
+
+        // Second pass: rewrite <uses-permission>, <uses-permission-sdk-23>, and component permission attributes
+        offset = readU16(original, 2)
+        while (offset + 8 <= original.size) {
+            val type = readU16(original, offset)
+            val headerSize = readU16(original, offset + 2)
+            val size = readU32(original, offset + 4).toInt()
+            if (size <= 0 || offset + size > original.size) break
+
+            if (type == 0x0102 && offset + 36 <= original.size) {
+                val tagName = strings.getOrNull(readU32(original, offset + 20).toInt())
+                val attributeStart = readU16(original, offset + 24)
+                val attributeSize = readU16(original, offset + 26)
+                val attributeCount = readU16(original, offset + 28)
+                var attr = offset + headerSize + attributeStart
+
+                repeat(attributeCount) {
+                    if (attr + attributeSize > offset + size || attributeSize < 20) return@repeat
+                    val attrNameIndex = readU32(original, attr + 4).toInt()
+                    val isUsesPermName = (tagName == "uses-permission" || tagName == "uses-permission-sdk-23") &&
+                        matchesAttribute(attrNameIndex, "name", 0x01010003)
+                    val isComponentPerm = matchesAttribute(attrNameIndex, "permission", 0x01010006) ||
+                        matchesAttribute(attrNameIndex, "readPermission", 0x01010007) ||
+                        matchesAttribute(attrNameIndex, "writePermission", 0x01010008)
+                    if (isUsesPermName || isComponentPerm) {
+                        val rawValueIdx = readU32(original, attr + 8).toInt()
+                        val dataType = original[attr + 15].toInt() and 0xff
+                        val dataIdx = readU32(original, attr + 16).toInt()
+                        val strIdx = if (rawValueIdx in strings.indices) rawValueIdx else if (dataType == 0x03 && dataIdx in strings.indices) dataIdx else -1
+                        if (strIdx in strings.indices) {
+                            val current = strings[strIdx]
+                            val updated = explicitStringReplacements[current]
+                                ?: if (current.startsWith(sourcePrefix) && !current.startsWith(targetPrefix)) {
+                                    targetPrefix + current.removePrefix(sourcePrefix)
+                                } else {
+                                    null
+                                }
+                            if (updated != null && updated != current) {
+                                explicitStringReplacements[current] = updated
+                                replacements[attr + 8] = indexFor(updated)
+                            }
+                        }
+                    }
+                    attr += attributeSize
                 }
             }
             offset += size
