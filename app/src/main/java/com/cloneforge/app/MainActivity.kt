@@ -135,6 +135,7 @@ private fun CloneForgeApp(
     var showRestoreDialog by remember { mutableStateOf(false) }
     var integrityBusy by remember { mutableStateOf(false) }
     var integrityReport by remember { mutableStateOf<CloneIntegrityReport?>(null) }
+    var integrityVersion by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -475,59 +476,59 @@ private fun CloneForgeApp(
                         }
                     }
                     Spacer(Modifier.height(10.dp))
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Installed Apps", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         TextButton(
                             onClick = { importLauncher.launch(arrayOf("application/vnd.android.package-archive", "*/*")) },
                             enabled = !importBusy && !backupBusy && !integrityBusy
                         ) {
                             Text(if (importBusy) "Importing…" else "Import APK")
                         }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(
-                            onClick = {
-                                backupCreateLauncher.launch("CloneForge-backup.zip")
-                            },
-                            enabled = !backupBusy && !importBusy && !integrityBusy
-                        ) {
-                            Text(if (backupBusy) "Working…" else "Backup")
-                        }
-                        TextButton(
-                            onClick = { showRestoreDialog = true },
-                            enabled = !backupBusy && !importBusy && !integrityBusy
-                        ) {
-                            Text("Restore")
-                        }
-                        TextButton(
-                            onClick = {
-                                integrityBusy = true
-                                scope.launch {
-                                    val result = withContext(Dispatchers.IO) {
-                                        runCatching { cloneLibrary.checkIntegrity() }
-                                    }
-                                    integrityBusy = false
-                                    result.onSuccess { report ->
-                                        integrityReport = report
-                                        library = cloneLibrary.list()
-                                        deleteFeedback = if (report.isHealthy) {
-                                            "Integrity check passed: " + report.healthy + " clone(s) healthy."
-                                        } else {
-                                            "Integrity check found " + report.issues.size + " issue(s)."
+                        Row {
+                            TextButton(
+                                onClick = {
+                                    backupCreateLauncher.launch("CloneForge-backup.zip")
+                                },
+                                enabled = !backupBusy && !importBusy && !integrityBusy
+                            ) {
+                                Text(if (backupBusy) "Working…" else "Backup")
+                            }
+                            TextButton(
+                                onClick = { showRestoreDialog = true },
+                                enabled = !backupBusy && !importBusy && !integrityBusy
+                            ) {
+                                Text("Restore")
+                            }
+                            TextButton(
+                                onClick = {
+                                    integrityBusy = true
+                                    scope.launch {
+                                        val result = withContext(Dispatchers.IO) {
+                                            runCatching { cloneLibrary.checkIntegrity() }
                                         }
-                                    }.onFailure { throwable ->
-                                        deleteFeedback = "Integrity check failed: " +
-                                            (throwable.message ?: "Unable to check the clone library.")
+                                        integrityBusy = false
+                                        result.onSuccess { report ->
+                                            integrityReport = report
+                                            library = cloneLibrary.list()
+                                            integrityVersion++
+                                            deleteFeedback = if (report.isHealthy) {
+                                                "Integrity check passed: " + report.healthy + " clone(s) healthy."
+                                            } else {
+                                                "Integrity check found " + report.issues.size + " issue(s)."
+                                            }
+                                        }.onFailure { throwable ->
+                                            deleteFeedback = "Integrity check failed: " +
+                                                (throwable.message ?: "Unable to check the clone library.")
+                                        }
                                     }
-                                }
-                            },
-                            enabled = !integrityBusy && !backupBusy && !importBusy
-                        ) {
-                            Text(if (integrityBusy) "Checking…" else "Check Integrity")
+                                },
+                                enabled = !integrityBusy && !backupBusy && !importBusy
+                            ) {
+                                Text(if (integrityBusy) "Checking…" else "Check Integrity")
+                            }
                         }
                     }
                     deleteFeedback?.let {
@@ -539,18 +540,10 @@ private fun CloneForgeApp(
                         }
                         Spacer(Modifier.height(8.dp))
                     }
-                    OutlinedTextField(
-                        value = appQuery,
-                        onValueChange = { appQuery = it },
-                        label = { Text("Search installed apps") },
-                        placeholder = { Text("App name or package") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
                 if (library.isNotEmpty()) {
                     item {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(8.dp))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("Clone Library", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                             TextButton(onClick = { refreshLibrary() }) { Text("Refresh") }
@@ -606,14 +599,18 @@ private fun CloneForgeApp(
                                 )
                             }
                         }
-                        val integrityCounts = library
-                            .map { cloneLibrary.integrityLabel(it) }
-                            .groupingBy { it }
-                            .eachCount()
+                        val integrityCounts = remember(library, integrityVersion) {
+                            library
+                                .map { cloneLibrary.integrityLabel(it) }
+                                .groupingBy { it }
+                                .eachCount()
+                        }
                         val verifiedCount = integrityCounts["Integrity: Verified"] ?: 0
-                        val attentionCount = library.count { record ->
-                            val label = cloneLibrary.integrityLabel(record)
-                            label != "Integrity: Verified" && label != "Integrity: Checking…"
+                        val attentionCount = remember(library, integrityVersion) {
+                            library.count { record ->
+                                val label = cloneLibrary.integrityLabel(record)
+                                label != "Integrity: Verified" && label != "Integrity: Checking…"
+                            }
                         }
                         val checkingCount = integrityCounts["Integrity: Checking…"] ?: 0
                         Spacer(Modifier.height(8.dp))
@@ -682,6 +679,7 @@ private fun CloneForgeApp(
                                 integrityLabel = withContext(Dispatchers.IO) {
                                     cloneLibrary.verifyIntegrityLabel(record)
                                 }
+                                integrityVersion++
                             }
                             val sourceIcon = remember(record.sourcePackage) {
                                 loadApplicationIcon(context, record.sourcePackage)
@@ -782,6 +780,7 @@ private fun CloneForgeApp(
                                         }
                                     }
                                     Spacer(Modifier.height(8.dp))
+                                    val matchingSourceApp = apps.firstOrNull { it.packageName == record.sourcePackage }
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -796,10 +795,24 @@ private fun CloneForgeApp(
                                             }
                                         }
                                         TextButton(
-                                            onClick = { openCloneInstaller(context, file) },
+                                            onClick = {
+                                                if (record.clonePackage in installedPackages && matchingSourceApp != null) {
+                                                    selected = matchingSourceApp
+                                                } else {
+                                                    openCloneInstaller(context, file)
+                                                }
+                                            },
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                                         ) {
-                                            Text(if (record.clonePackage in installedPackages) "Update" else "Install")
+                                            Text(
+                                                if (record.clonePackage in installedPackages && matchingSourceApp != null) {
+                                                    "Rebuild"
+                                                } else if (record.clonePackage in installedPackages) {
+                                                    "Reinstall"
+                                                } else {
+                                                    "Install"
+                                                }
+                                            )
                                         }
                                         TextButton(
                                             onClick = {
@@ -811,6 +824,7 @@ private fun CloneForgeApp(
                                                     result.onSuccess { report ->
                                                         integrityLabel = cloneLibrary.integrityLabel(record)
                                                         library = cloneLibrary.list()
+                                                        integrityVersion++
                                                         deleteFeedback = if (report.isHealthy) {
                                                             "Integrity verified for " + record.cloneName + "."
                                                         } else {
@@ -855,7 +869,18 @@ private fun CloneForgeApp(
                     }
                 }
                 item {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Installed Apps", style = MaterialTheme.typography.headlineSmall)
                     Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = appQuery,
+                        onValueChange = { appQuery = it },
+                        label = { Text("Search installed apps") },
+                        placeholder = { Text("App name or package") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Text("Select an app to prepare it for cloning.")
                     Spacer(Modifier.height(8.dp))
                 }
