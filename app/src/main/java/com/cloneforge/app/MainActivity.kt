@@ -1771,7 +1771,7 @@ private fun CloneSetupScreen(app: InstalledApp, modifier: Modifier = Modifier, o
                 packageSuffix.isNotBlank() &&
                 previewPackage != null &&
                 !packageTaken &&
-                preflight?.compatibility?.supported == true,
+                preflight?.compatibility?.supported != false,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(if (busy) "Building…" else "Build & Sign Clone")

@@ -64,10 +64,9 @@ class DexPackageRewriter(
             verifier.verifyBytes(initialBytes, sourcePackage, clonePackage)
         }
         val hasSourcePackageBytes = if (preserveClasses) {
-            containsAscii(initialBytes, sourcePackage) ||
-                exactStringReplacements.entries.any { (key, value) ->
-                    key.isNotEmpty() && key != value && containsAscii(initialBytes, key)
-                }
+            exactStringReplacements.entries.any { (key, value) ->
+                key.isNotEmpty() && key != value && containsAscii(initialBytes, key)
+            }
         } else {
             initialVerification.sourceOccurrences > 0 ||
                 containsAscii(initialBytes, sourcePackage) ||
@@ -121,8 +120,7 @@ class DexPackageRewriter(
 
         fun transformString(raw: String): String {
             return if (preserveClasses) {
-                exactStringReplacements[raw]
-                    ?: rewritePreservingClassNames(raw, sourcePackage, clonePackage)
+                exactStringReplacements[raw] ?: raw
             } else {
                 rewritePackageString(raw, sourcePackage, clonePackage)
             }

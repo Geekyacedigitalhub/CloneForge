@@ -465,9 +465,9 @@ private class BinaryXmlEditor(private val original: ByteArray) {
             rewriteProviderAuthoritiesAndPermissions(source, target, preserveClasses = true)
 
             componentClassNames.forEach { className ->
-                explicitStringReplacements[className] = className
+                explicitStringReplacements.remove(className)
             }
-            explicitStringReplacements[source] = target
+            explicitStringReplacements.remove(source)
         } else {
             for (i in strings.indices) {
                 val current = strings[i]

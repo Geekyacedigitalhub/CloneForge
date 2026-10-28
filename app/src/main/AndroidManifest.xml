@@ -13,6 +13,7 @@
         android:theme="@style/Theme.CloneForge"
         android:label="CloneForge"
         android:allowBackup="false"
+        android:largeHeap="true"
         android:extractNativeLibs="true"
         android:supportsRtl="true">
         <provider
