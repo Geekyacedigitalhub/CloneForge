@@ -81,7 +81,8 @@ jobs:
 
           RAW_APK="app/build/outputs/apk/release/app-release.apk"
           ALIGNED_APK="app/build/outputs/apk/release/CloneForge-aligned.apk"
-          FINAL_APK="app/build/outputs/apk/release/CloneForge-v1.3.3.apk"
+          FINAL_APK="app/build/outputs/apk/release/CloneForge-v1.3.4.apk"
+          V133_APK="app/build/outputs/apk/release/CloneForge-v1.3.3.apk"
           V132_APK="app/build/outputs/apk/release/CloneForge-v1.3.2.apk"
           V131_APK="app/build/outputs/apk/release/CloneForge-v1.3.1.apk"
           V130_APK="app/build/outputs/apk/release/CloneForge-v1.3.0.apk"
@@ -110,6 +111,7 @@ jobs:
           BADGING_OUT=$("$AAPT2" dump badging "$FINAL_APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|application:|application-icon-)" | tr '\n' ' ')
           echo "::notice title=ApkVerification::$VERIFY_OUT | $BADGING_OUT"
 
+          cp "$FINAL_APK" "$V133_APK"
           cp "$FINAL_APK" "$V132_APK"
           cp "$FINAL_APK" "$V131_APK"
           cp "$FINAL_APK" "$V130_APK"
@@ -120,9 +122,9 @@ jobs:
       - name: Upload CloneForge APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CloneForge-v1.3.3-apk
+          name: CloneForge-v1.3.4-apk
           path: |
-            app/build/outputs/apk/release/CloneForge-v1.3.3.apk
+            app/build/outputs/apk/release/CloneForge-v1.3.4.apk
             app/build/outputs/apk/release/CloneForge.apk
           if-no-files-found: error
 
@@ -131,18 +133,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if gh release view v1.3.4 >/dev/null 2>&1; then
+            gh release upload v1.3.4 \
+              app/build/outputs/apk/release/CloneForge-v1.3.4.apk \
+              app/build/outputs/apk/release/CloneForge.apk \
+              --clobber
+          else
+            gh release create v1.3.4 \
+              app/build/outputs/apk/release/CloneForge-v1.3.4.apk \
+              app/build/outputs/apk/release/CloneForge.apk \
+              --latest \
+              --title "CloneForge v1.3.4 (Official Signed APK)" \
+              --notes "Official signed Android APK of CloneForge v1.3.4 fixing OutOfMemoryError on lower-RAM phones (streaming 64 KB APK/DEX scanners + android:largeHeap='true') and preserving React Native / TradeGuard sandbox identifiers. Download **CloneForge-v1.3.4.apk** directly onto your Android phone to install."
+          fi
           if gh release view v1.3.3 >/dev/null 2>&1; then
             gh release upload v1.3.3 \
               app/build/outputs/apk/release/CloneForge-v1.3.3.apk \
               app/build/outputs/apk/release/CloneForge.apk \
               --clobber
-          else
-            gh release create v1.3.3 \
-              app/build/outputs/apk/release/CloneForge-v1.3.3.apk \
-              app/build/outputs/apk/release/CloneForge.apk \
-              --latest \
-              --title "CloneForge v1.3.3 (Official Signed APK)" \
-              --notes "Official signed Android APK of CloneForge v1.3.3 fixing Clone Library live integrity counters, 1-tap Rebuild action for existing clones, and home screen section layout. Download **CloneForge-v1.3.3.apk** directly onto your Android phone to install."
           fi
           if gh release view v1.3.2 >/dev/null 2>&1; then
             gh release upload v1.3.2 \

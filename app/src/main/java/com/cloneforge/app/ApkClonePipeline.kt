@@ -70,7 +70,7 @@ class ApkClonePipeline(
         manifestFile.writeBytes(rewrite.data)
 
         val resourcesFile = File(workspace.unpackedDir, "resources.arsc")
-        val arscRewriteCount = if (resourcesFile.exists() && resourcesFile.isFile) {
+        val arscRewriteCount = if (!preserveClasses && resourcesFile.exists() && resourcesFile.isFile) {
             val arscRewrite = arscPackageRewriter.rewrite(
                 arscBytes = resourcesFile.readBytes(),
                 sourcePackage = plan.sourcePackage,
@@ -202,12 +202,20 @@ class ApkClonePipeline(
                         time = 0L
                     }
                     if (shouldStoreUncompressed(relative)) {
-                        val bytes = file.readBytes()
-                        val crc = CRC32().apply { update(bytes) }.value
+                        val crc32 = CRC32()
+                        val buf = ByteArray(64 * 1024)
+                        FileInputStream(file).use { input ->
+                            while (true) {
+                                val r = input.read(buf)
+                                if (r <= 0) break
+                                crc32.update(buf, 0, r)
+                            }
+                        }
+                        val fileLen = file.length()
                         entry.method = ZipEntry.STORED
-                        entry.size = bytes.size.toLong()
-                        entry.compressedSize = bytes.size.toLong()
-                        entry.crc = crc
+                        entry.size = fileLen
+                        entry.compressedSize = fileLen
+                        entry.crc = crc32.value
                         val nameBytes = relative.toByteArray(Charsets.UTF_8)
                         val dataStart = countingOut.bytesWritten + 30L + nameBytes.size
                         val padding = ((4 - (dataStart % 4)) % 4).toInt()
@@ -215,7 +223,7 @@ class ApkClonePipeline(
                             entry.extra = ByteArray(padding)
                         }
                         zip.putNextEntry(entry)
-                        zip.write(bytes)
+                        FileInputStream(file).use { input -> input.copyTo(zip) }
                         zip.closeEntry()
                     } else {
                         zip.putNextEntry(entry)
